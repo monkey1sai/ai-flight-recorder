@@ -1,4 +1,5 @@
 # Codex 可執行專案總規格
+
 ## AI / Agent / LLM Observability Platform（Flight Recorder + Provenance Graph + Why Engine）
 
 版本：v1.0  
@@ -16,18 +17,23 @@
 ## 0. 使用方式
 
 ### 給人類
+
 你應該把這份文件視為：
+
 - 專案的總設計說明
 - 對 Codex 的工作約束
 - 決定是否放行 PR / release 的共同標準
 
 ### 給 Codex
+
 你應該把這份文件視為：
+
 - 架構與產品的系統紀錄
 - 任何非 trivial 任務的背景知識
 - 撰寫與執行 ExecPlan 的上位規格
 
 ### 讀取順序
+
 對 Codex 而言，建議的讀取順序固定如下：
 
 1. `AGENTS.md`
@@ -41,6 +47,7 @@
 ## 1. 專案定位
 
 ### 1.1 一句話定義
+
 打造一套讓人類理解 AI / Agent / LLM 行為的觀測平台，核心能力是：
 
 - 記錄它做了什麼
@@ -50,11 +57,13 @@
 - 以可驗證的方式回答「為什麼它會這樣輸出」
 
 ### 1.2 產品名稱（工作名）
+
 - AI Flight Recorder
 - Agent Observability Studio
 - Reasoning Provenance Workbench
 
 ### 1.3 核心價值
+
 本產品不是要聲稱讀出模型真正的隱藏內心獨白，而是要建立一套 **可審計、可回放、可驗證** 的證據系統，讓人類能看懂：
 
 - session / run / task 的過程
@@ -67,6 +76,7 @@
 ## 2. 問題定義
 
 ### 2.1 我們要解決的痛點
+
 目前大多數 AI 產品只給使用者最終答案，但缺少以下能力：
 
 - 任務流程回放
@@ -77,6 +87,7 @@
 - 哪些解釋只是模型自述，哪些是真正可驗證的依據
 
 ### 2.2 本產品的回答方式
+
 我們用四層證據等級處理所有 explanation：
 
 - `observed`：來自 trace、tool result、retrieval、DB、system event 的硬證據
@@ -92,6 +103,7 @@
 ## 3. 目標使用者
 
 ### 3.1 主要角色
+
 1. **AI 產品開發者**  
    需要知道 agent 在哪一層失敗，怎麼修。
 
@@ -105,6 +117,7 @@
    需要簡單看懂「系統為何做出這個回答」。
 
 ### 3.2 典型問題
+
 - 這個 agent 為什麼回錯？
 - 它忽略了哪份文件？
 - 哪段輸出沒有證據支持？
@@ -117,6 +130,7 @@
 ## 4. 產品範圍
 
 ### 4.1 In scope（MVP 內）
+
 - session / trace / step ingestion
 - 可查詢的 canonical schema
 - timeline / run detail UI
@@ -129,6 +143,7 @@
 - Codex-friendly repo contract（AGENTS / PLANS / skills / validation）
 
 ### 4.2 Out of scope（至少第一階段不做）
+
 - 聲稱讀出隱藏 chain-of-thought
 - 自動大規模儲存與重新分發受版權保護的論文 PDF
 - 未經同意的 production full-access agent 自動執行
@@ -140,16 +155,20 @@
 ## 5. 核心設計原則
 
 ### 5.1 Repository knowledge 是系統紀錄
+
 文件不是附屬品；文件、計畫、驗證報告、品質規則都要跟程式碼一起版本化。
 
 ### 5.2 人類定義意圖，Codex 負責執行
+
 人類負責：
+
 - 設定方向
 - 審核架構
 - 給憑證與權限
 - 做最後風險判斷
 
 Codex 負責：
+
 - 掃描專案
 - 研究資料
 - 撰寫計畫
@@ -159,15 +178,19 @@ Codex 負責：
 - 產出驗證報告
 
 ### 5.3 觀測資料必須 append-only
+
 不要只存當前狀態。每一步的意圖、觀察、推論、操作、回應、風險判斷都應可追溯。
 
 ### 5.4 解釋必須分級
+
 UI 與 API 不得把不同可信度的 explanation 混在一起。
 
 ### 5.5 預設最小權限
+
 設計上採用 read-only / workspace-write / live research 的分層模式；高風險權限必須被明確區隔。
 
 ### 5.6 先有可驗證最小垂直切片，再擴充
+
 Codex 在每個 milestone 先交出最小可跑的 slice，再擴到更完整功能。
 
 ---
@@ -177,9 +200,11 @@ Codex 在每個 milestone 先交出最小可跑的 slice，再擴到更完整功
 > 這一節不是理論選項比較，而是本專案的預設決策。Codex 除非有明確理由，否則不應偏離。
 
 ### 6.1 專案型態
+
 採 **monorepo**。
 
 ### 6.2 建議技術棧
+
 - **Web UI**：Next.js + TypeScript + React + Tailwind
 - **API / workers**：Python + FastAPI
 - **DB**：PostgreSQL（canonical store）
@@ -193,6 +218,7 @@ Codex 在每個 milestone 先交出最小可跑的 slice，再擴到更完整功
 - **Developer contract**：Makefile 為統一入口
 
 ### 6.3 為何這樣選
+
 1. Web 前端與操作台需要快速組裝與良好元件化。
 2. Python 適合資料處理、連接器、worker、schema 驗證與研究流程。
 3. PostgreSQL 足夠支援：
@@ -260,6 +286,7 @@ repo-root/
 所有 repo 最終都應提供這些入口；若還沒有，Codex 的第一個 bootstrap 任務就是建立它們。
 
 ### 8.1 Makefile target 契約
+
 - `make setup`
 - `make lint`
 - `make typecheck`
@@ -270,6 +297,7 @@ repo-root/
 - `make validate`
 
 ### 8.2 各 target 語意
+
 - `setup`：安裝依賴與本地工具
 - `lint`：風格與靜態檢查
 - `typecheck`：型別 / schema 檢查
@@ -288,9 +316,11 @@ repo-root/
 ### 9.1 實體
 
 #### Session
+
 一個長任務或多輪互動的容器。
 
 建議欄位：
+
 - `id`
 - `source`
 - `user_id`
@@ -300,9 +330,11 @@ repo-root/
 - `metadata_json`
 
 #### Trace
+
 一次 request / run / cloud task / local task。
 
 建議欄位：
+
 - `id`
 - `session_id`
 - `parent_trace_id`
@@ -314,7 +346,9 @@ repo-root/
 - `config_ref`
 
 #### Step
+
 單一步驟，例如：
+
 - model call
 - tool call
 - retrieval
@@ -325,6 +359,7 @@ repo-root/
 - replay
 
 建議欄位：
+
 - `id`
 - `trace_id`
 - `parent_step_id`
@@ -336,6 +371,7 @@ repo-root/
 - `summary`
 
 #### Observation
+
 此步驟實際看到的東西。
 
 - `id`
@@ -346,7 +382,9 @@ repo-root/
 - `source_artifact_id`
 
 #### StateDelta
+
 狀態變更，至少支援：
+
 - goal state
 - plan state
 - belief state
@@ -361,7 +399,9 @@ repo-root/
 - `after_json`
 
 #### Artifact
+
 原始資料或可追溯物件，例如：
+
 - prompt
 - message
 - doc chunk
@@ -380,6 +420,7 @@ repo-root/
 - `metadata_json`
 
 #### EvidenceEdge
+
 把 claim、artifact、step、output 等串起來的邊。
 
 - `id`
@@ -392,6 +433,7 @@ repo-root/
 - `metadata_json`
 
 #### OutputClaim
+
 把最終輸出拆成可驗證 claim。
 
 - `id`
@@ -402,6 +444,7 @@ repo-root/
 - `position_index`
 
 #### ExplanationRecord
+
 某個 claim 的 explanation 物件。
 
 - `id`
@@ -414,6 +457,7 @@ repo-root/
 - `confidence`
 
 #### Evaluation
+
 測試或審查結果。
 
 - `id`
@@ -425,6 +469,7 @@ repo-root/
 - `details_json`
 
 #### Intervention
+
 任何 guardrail / fallback / override。
 
 - `id`
@@ -436,6 +481,7 @@ repo-root/
 - `result`
 
 ### 9.2 設計規則
+
 1. **raw payload 與 normalized metadata 分開存**
 2. **大內容走 object store，DB 只留 reference**
 3. **evidence graph 先用 relation table，不先上 graph DB**
@@ -447,7 +493,9 @@ repo-root/
 ## 10. 產品畫面（MVP 到 V1）
 
 ### 10.1 Live Timeline
+
 顯示：
+
 - user input
 - plan
 - model step
@@ -458,7 +506,9 @@ repo-root/
 - final output
 
 ### 10.2 State Diff Viewer
+
 每個 step 前後：
+
 - goal
 - plan
 - belief
@@ -467,7 +517,9 @@ repo-root/
 - pending actions
 
 ### 10.3 Evidence Graph
+
 從 output claim 追到：
+
 - artifact
 - retrieval chunk
 - tool result
@@ -476,7 +528,9 @@ repo-root/
 - config
 
 ### 10.4 Why Panel
+
 對單一輸出片段顯示：
+
 - supporting evidence
 - explanation grade
 - alternative explanation
@@ -484,7 +538,9 @@ repo-root/
 - confidence
 
 ### 10.5 After-Action Review
+
 讓使用者問：
+
 - 在某時間點它知道什麼？
 - 為何忽略某份文件？
 - 哪個 tool result 改變了判斷？
@@ -494,6 +550,7 @@ repo-root/
 ## 11. 為什麼輸出引擎（Why Engine）第一代規格
 
 ### 11.1 基本流程
+
 1. 將輸出拆成 atomic claims
 2. 對每個 claim 連 evidence edges
 3. 標示 support 狀態
@@ -501,6 +558,7 @@ repo-root/
 5. 提供 UI 查詢與 API 查詢
 
 ### 11.2 claim 狀態
+
 - `supported`
 - `partially_supported`
 - `unsupported`
@@ -508,6 +566,7 @@ repo-root/
 - `conflicted`
 
 ### 11.3 explanation method
+
 - `direct_trace_link`
 - `tool_result_link`
 - `retrieval_link`
@@ -517,6 +576,7 @@ repo-root/
 - `human_annotation`
 
 ### 11.4 第一代不做的事
+
 - 完整機制化因果推論
 - 大規模 shadow-model infra
 - 自動 truth adjudication across all claims
@@ -528,6 +588,7 @@ repo-root/
 這個專案不只是工程工具，也是一個研究工作台。Codex 必須能夠「找資料 → 轉成 evidence → 實作」。
 
 ### 12.1 統一原則
+
 對每個外部來源，都要保留：
 
 - `source_type`
@@ -545,15 +606,18 @@ repo-root/
 ### 12.2 Web research workflow
 
 #### 目標
+
 讓 Codex 在需要 current info 時，不依賴過期記憶。
 
 #### 規則
+
 1. 先官方文件，再 primary sources，再高品質二手來源
 2. 研究結果要落地成 repo 內文件，不只在對話裡
 3. 每個研究結論都要說明「對實作有何影響」
 4. Web result 一律視為 untrusted input，要做來源分級
 
 #### 產出格式
+
 建議記錄在 `docs/research/YYYYMMDD-topic.md`：
 
 - Question
@@ -569,9 +633,11 @@ repo-root/
 ### 12.3 Google Drive 連接器規格
 
 #### 目標
+
 用於搜尋私人研究資料庫、筆記、論文 PDF、Google Docs 與版本/活動歷史。
 
 #### MVP 功能
+
 1. 檔案搜尋
 2. metadata 擷取
 3. Google Docs export（若適用）
@@ -580,10 +646,13 @@ repo-root/
 6. provenance 保存
 
 #### 讀取模式
+
 先做 **read-only connector**，不要一開始就支援寫入。
 
 #### 建議工具面
+
 若你有 MCP / internal tools，建議至少暴露：
+
 - `drive.search_files`
 - `drive.get_file_metadata`
 - `drive.export_doc`
@@ -591,7 +660,9 @@ repo-root/
 - `drive.get_activity`
 
 #### 搜尋策略
+
 支援：
+
 - title/name query
 - fullText phrase query
 - mimeType filter
@@ -601,12 +672,14 @@ repo-root/
 - tags / custom properties（若企業環境有）
 
 #### 實作規則
+
 - 搜尋結果與匯出結果都要建立 `Artifact`
 - 儘量保存 `file_id`, `revision-like info`, `modifiedTime`, `owners`, `mimeType`
 - 若檔案太大無法 export，至少保存 metadata 與失敗原因
 - 任何同步 worker 都要有 resumable cursor / token
 
 #### 必留 provenance
+
 - Drive file id
 - source query
 - retrieval timestamp
@@ -620,9 +693,11 @@ repo-root/
 ### 12.4 arXiv 連接器規格
 
 #### 目標
+
 建立公開研究文獻的 metadata feed 與 topic watchlist。
 
 #### MVP 功能
+
 1. 關鍵字搜尋
 2. category filter
 3. 作者 / title / abstract 搜尋
@@ -631,12 +706,14 @@ repo-root/
 6. 與 internal research notes 的 cross-link
 
 #### 建議工具面
+
 - `arxiv.search`
 - `arxiv.get_paper`
 - `arxiv.harvest_metadata`
 - `arxiv.track_topics`
 
 #### Topic watchlist 初始集合
+
 - `agent observability`
 - `reasoning provenance`
 - `faithful explanations`
@@ -647,6 +724,7 @@ repo-root/
 - `AI audit trail`
 
 #### 必留欄位
+
 - arXiv id
 - title
 - authors
@@ -682,6 +760,7 @@ repo-root/
 ### 14.1 標準作業流程
 
 #### Phase A：理解
+
 1. 讀 `AGENTS.md`
 2. 讀本文件
 3. 讀 `.agent/PLANS.md`
@@ -690,7 +769,9 @@ repo-root/
 6. 列出已存在的 command contract 與缺口
 
 #### Phase B：規劃
+
 若任務非 trivial，建立或更新 plan：
+
 - scope
 - assumptions
 - milestones
@@ -698,22 +779,27 @@ repo-root/
 - validation plan
 
 #### Phase C：研究
+
 若需要 current or external info：
+
 - 用 `$research-evidence`
 - 官方文件優先
 - 研究結果寫回 repo
 
 #### Phase D：實作
+
 - 一次只做一個 milestone 的最小可驗證 slice
 - 先建立 schema / fixtures / API contract，再堆 UI
 - 先讓測試可執行，再增加功能
 
 #### Phase E：驗證
+
 - 跑最小 relevant tests
 - 再跑 broader gates
 - 產出 validation report
 
 #### Phase F：更新知識
+
 - 更新 active plan
 - 更新 docs
 - 記錄決策與發現
@@ -724,7 +810,9 @@ repo-root/
 ## 15. Codex 何時要用哪些 repo 能力
 
 ### 15.1 何時必須建立 plan
+
 符合以下任一條件都要建：
+
 - 多檔案
 - 多子系統
 - 外部研究
@@ -733,11 +821,13 @@ repo-root/
 - 需要 staged validation
 
 ### 15.2 何時要用 research skill
+
 - 需要 current docs
 - Google Drive / arXiv / OTel / Codex 配置疑問
 - 任何可能已變動的 API / policy / limit
 
 ### 15.3 何時要用 validate skill
+
 - milestone 完成
 - 準備 merge
 - 大改版後
@@ -745,7 +835,9 @@ repo-root/
 - 說明「這真的能用嗎」的時候
 
 ### 15.4 何時可用 subagents
+
 只有在使用者或 plan 明確要求時，才平行拆成獨立子任務，例如：
+
 - frontend shell
 - backend schema
 - research ingestion
@@ -758,26 +850,31 @@ repo-root/
 ## 16. 建議的 Codex 執行指令模式
 
 ### 16.1 只看 repo，不修改
+
 ```bash
 codex --sandbox read-only --ask-for-approval never "Summarize this repository and list the active instruction files."
 ```
 
 ### 16.2 本地低摩擦實作
+
 ```bash
 codex exec --json --full-auto "Read AGENTS.md and the active ExecPlan, implement the current milestone, run the narrowest relevant checks, and update the plan."
 ```
 
 ### 16.3 需要最新網路資訊的研究
+
 ```bash
 codex --profile research_live --search "Use the $research-evidence skill and produce a reusable note for this repository."
 ```
 
 ### 16.4 只做 read-only 驗證
+
 ```bash
 codex exec --json --sandbox read-only --ask-for-approval never "Use the $validate-release skill to audit this branch against docs/ACCEPTANCE_CHECKLIST.md."
 ```
 
 ### 16.5 雲端背景任務（可選）
+
 若你使用 Codex cloud / app，可把長任務交給 cloud environment，但仍要遵循本 repo 的 AGENTS / plan / validation 契約。
 
 ---
@@ -785,24 +882,28 @@ codex exec --json --sandbox read-only --ask-for-approval never "Use the $validat
 ## 17. 安全與權限設計
 
 ### 17.1 預設原則
+
 - 預設最小權限
 - 預設 read-only 或 workspace-write
 - 需要 live research 才開網路
 - 危險模式只在隔離 runner 中使用
 
 ### 17.2 本 repo 的權限層級建議
+
 1. `readonly_quiet`
 2. `build_local`
 3. `research_live`
 4. `dangerous_full_access`（原則上不預設提供）
 
 ### 17.3 設定與秘密
+
 - `.codex/config.toml` 視為較穩定的控制面
 - 真正 secrets 不應硬編碼
 - 任何連接器都應支援 mock / fixture 模式
 - 雲端 setup script 可取得 secrets，但 agent phase 應假設不可依賴 setup script 的 export 狀態持續存在
 
 ### 17.4 shell environment policy
+
 應該採 include-only 最小白名單，而不是把整個 shell 環境全部暴露給 agent。
 
 ---
@@ -810,16 +911,20 @@ codex exec --json --sandbox read-only --ask-for-approval never "Use the $validat
 ## 18. Telemetry 與 OTel 策略
 
 ### 18.1 內部 canonical schema 優先
+
 OTel 是輸出與對接層，不是產品內部唯一真實 schema。
 
 ### 18.2 分層
+
 - **Canonical schema**：產品內部的長期穩定資料模型
 - **OTel mapping layer**：對外或對標準化工具導出的相容層
 - **Blob store refs**：原始大內容
 - **Query / analytics layer**：給 UI 與 replay 使用
 
 ### 18.3 原始內容處理
+
 prompt / output / tool payload 可能很大、也可能含敏感資訊，所以：
+
 - trace metadata 與 raw content 分離
 - raw content 用 reference
 - 預設 redaction
@@ -830,6 +935,7 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 ## 19. 測試策略
 
 ### 19.1 測試層次
+
 1. **Unit**
    - schema validation
    - claim extraction
@@ -857,15 +963,18 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
    - provenance completeness
 
 ### 19.2 測試原則
+
 - external connectors 先用 fixtures / mocks
 - live credentials 只做 opt-in testing
 - every milestone 至少有一個 smoke path
 - validation report 是 deliverable，不是可有可無
 
 ### 19.3 驗證報告格式
+
 建議 `reports/validation/YYYYMMDD-topic.md`
 
 內容至少包含：
+
 - Scope
 - Commands run
 - Pass / fail summary
@@ -880,6 +989,7 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 因為這個 repo 是給 Codex 長期工作用，所以不只要測程式，也要測 agent workflow。
 
 ### 20.1 最小 eval 類型
+
 - skill 會不會正確觸發
 - 會不會亂觸發
 - 在 plan 存在時會不會先更新 plan
@@ -887,6 +997,7 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 - research 任務會不會生成可重用 evidence note
 
 ### 20.2 基本做法
+
 - 使用 `codex exec --json`
 - 保存 JSONL trace
 - 對輸出事件做 deterministic checks
@@ -897,7 +1008,9 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 ## 21. 里程碑規劃
 
 ### Milestone 0：Repo bootstrap
+
 交付：
+
 - monorepo skeleton
 - Makefile contract
 - lint / typecheck / test wiring
@@ -905,35 +1018,45 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 - first bootstrap validation report
 
 ### Milestone 1：Canonical schema + fixtures
+
 交付：
+
 - DB models / migrations
 - seed fixtures
 - API contracts
 - schema tests
 
 ### Milestone 2：Ingestion API + run detail
+
 交付：
+
 - ingest endpoint
 - artifact refs
 - run detail API
 - minimal timeline UI
 
 ### Milestone 3：State diff + evidence graph
+
 交付：
+
 - state delta persistence
 - evidence_edge linking
 - graph API
 - graph UI prototype
 
 ### Milestone 4：Research connectors
+
 交付：
+
 - arXiv metadata connector
 - Google Drive read-only connector
 - source provenance fields
 - integration tests with fixtures
 
 ### Milestone 5：Why Engine v1
+
 交付：
+
 - claim extraction
 - support classification
 - explanation grade UI
@@ -941,7 +1064,9 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 - validation cases
 
 ### Milestone 6：Replay + evals + hardening
+
 交付：
+
 - replay worker
 - milestone evals
 - OTel export mapping
@@ -1017,6 +1142,7 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 本文件的操作設計，建立在下列類型來源之上：
 
 ### A. Codex 官方操作模型
+
 - AGENTS.md discovery
 - sandbox / approvals
 - CLI exec / JSON output
@@ -1027,6 +1153,7 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 - OTel export options
 
 ### B. Google Drive 官方 API 能力
+
 - files.list search
 - query operators
 - files.export
@@ -1034,6 +1161,7 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 - Drive Activity API
 
 ### C. arXiv 官方 API / policy
+
 - API search
 - start / max_results paging
 - rate limits
@@ -1041,12 +1169,14 @@ prompt / output / tool payload 可能很大、也可能含敏感資訊，所以�
 - attribution and redistribution constraints
 
 ### D. OpenTelemetry 官方規格
+
 - GenAI semantic conventions
 - agent spans
 - MCP spans
 - development / evolving status
 
 ### E. 研究論文方向
+
 - reasoning provenance
 - agent observability
 - unfaithful chain-of-thought
