@@ -1,0 +1,8 @@
+id,should_trigger,skill,prompt,expected_outcome
+research-01,true,research-evidence,Use the $research-evidence skill to gather current official guidance for Google Drive files.list search and Docs export limits.,"A reusable research note is created with sources, constraints, and implementation consequences."
+research-02,true,research-evidence,We need arXiv metadata sync and polite paging. Research the current official API rules and daily-harvest option.,"The note captures API paging, delays, OAI-PMH, and source attribution rules."
+research-03,false,research-evidence,Rename the TimelineCard component to RunTimelineCard and update its imports.,No research skill should trigger for a local rename.
+implement-01,true,implement-execplan,Use the $implement-execplan skill to execute the active plan for the ingestion schema.,"The agent reads the plan, implements a milestone, runs checks, and updates the plan."
+implement-02,false,implement-execplan,Fix a typo in README.md.,The implementation skill should generally not be required for a one-file typo.
+validate-01,true,validate-release,Use the $validate-release skill to audit the branch against docs/ACCEPTANCE_CHECKLIST.md.,A validation report is written with a merge readiness verdict.
+validate-02,false,validate-release,Add a new PostgreSQL migration for the evidence_edge table.,Validation skill should not trigger before implementation work exists.
