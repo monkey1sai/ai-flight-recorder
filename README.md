@@ -1,61 +1,120 @@
-# Codex-ready Project Kit for AI / Agent / LLM Observability
+# AERIS Flight Recorder
 
-This bundle is a practical starting kit for building an **AI Flight Recorder / Observability / Why Engine** product with **OpenAI Codex** as the primary coding agent.
+Monorepo bootstrap for an **AI / Agent / LLM observability platform** focused on execution history, provenance, evidence grading, and replay-friendly explanations.
 
-## What is included
+## Current state
 
-- `COMPLETE_CODEX_PROJECT_GUIDE_zh-TW.md`  
-  The main human-readable specification. It explains the product, architecture, research workflow, testing, security rules, and the exact operating model for Codex.
+This repository is no longer just a docs kit. It now contains the first bootstrap skeleton aligned to `COMPLETE_CODEX_PROJECT_GUIDE_zh-TW.md`:
 
-- `AGENTS.md`  
-  The concise repository contract Codex should read first.
+- `apps/api`
+  Minimal FastAPI surface with `/healthz` and bootstrap metadata.
+- `apps/web`
+  Next.js App Router shell that makes the evidence-grade contract visible from day one.
+- `packages/schema`
+  Typed Python boundary for evidence grades plus the first canonical Postgres migration pair.
+- `workers/*`
+  Reserved locations for ingest, Drive sync, arXiv sync, and replay workers.
+- `tests/*`
+  Unit, integration, and smoke tests that verify the first runnable slice and repo contract.
+- `plans/active/20260417-bootstrap-monorepo.md`
+  The active ExecPlan that defines the current bootstrap milestone.
+- `plans/active/20260417-canonical-schema-migrations.md`
+  The schema/migration ExecPlan for the first Postgres canonical model slice.
 
-- `.agent/PLANS.md`  
-  The execution-plan template and rules for long-horizon work.
+## System of record
 
-- `.codex/config.toml.example`  
-  Suggested local Codex profiles for build, research, CI validation, and observability.
+Read these files in order before doing non-trivial work:
 
-- `.agents/skills/*`  
-  Repo-scoped Codex skills for research, implementation, and validation workflows.
+1. `AGENTS.md`
+2. `COMPLETE_CODEX_PROJECT_GUIDE_zh-TW.md`
+3. `.agent/PLANS.md`
+4. the newest relevant file in `plans/active/`
+5. supporting docs in `docs/`
 
-- `docs/TASK_SEEDS.md`  
-  Ready-to-run task prompts for Codex.
+## Repository layout
 
-- `docs/ACCEPTANCE_CHECKLIST.md`  
-  Definition of done and release checklist.
-
-- `docs/SOURCES_AND_LIMITS.md`  
-  Source policy notes and external-system constraints.
-
-- `evals/codex_bootstrap_prompts.csv`  
-  A starter eval prompt set for validating skills and instruction behavior.
-
-## Recommended adoption order
-
-1. Copy this bundle into the repository root.
-2. Read `COMPLETE_CODEX_PROJECT_GUIDE_zh-TW.md`.
-3. Review and trim `AGENTS.md` so it matches your exact stack and naming.
-4. Copy `.codex/config.toml.example` into either:
-   - `~/.codex/config.toml` for user-level defaults, or
-   - `.codex/config.toml` for project-scoped defaults.
-5. Create the first plan under `plans/active/`.
-6. Run the prompts in `docs/TASK_SEEDS.md`.
-
-## Important notes
-
-- The `.codex/` directory is intended to be human- or admin-controlled configuration.
-- The `.agents/skills/` directory contains reusable skill instructions. Treat it as stable infrastructure, not routine feature code.
-- Active work plans should live under `plans/active/` so Codex can update them during normal workspace-write runs.
-
-## Suggested first run
-
-```bash
-codex --ask-for-approval never "Summarize the current instructions and list the files you will use as the system of record."
+```text
+.
+├─ apps/
+│  ├─ api/
+│  └─ web/
+├─ packages/
+│  ├─ schema/
+│  ├─ testkit/
+│  └─ ui/
+├─ workers/
+│  ├─ ingest/
+│  ├─ drive_sync/
+│  ├─ arxiv_sync/
+│  └─ replay/
+├─ tests/
+│  ├─ unit/
+│  ├─ integration/
+│  └─ smoke/
+├─ docs/
+├─ plans/
+└─ reports/
 ```
 
-Then, once the repo is trusted and dependencies are ready:
+## Developer contract
+
+Root `Makefile` defines the canonical task names required by the repo contract:
+
+- `make setup`
+- `make lint`
+- `make typecheck`
+- `make unit`
+- `make integration`
+- `make smoke`
+- `make test`
+- `make validate`
+
+If `make` is unavailable on your platform, run the underlying commands directly:
 
 ```bash
-codex exec --json --full-auto "Read AGENTS.md, COMPLETE_CODEX_PROJECT_GUIDE_zh-TW.md, and .agent/PLANS.md. Create the first ExecPlan in plans/active/ for Milestone 0 bootstrap and execute it."
+uv sync --group dev
+npm install --workspaces --include-workspace-root
+uv run ruff check .
+uv run mypy apps packages workers tests
+uv run pytest tests/unit -q
+uv run pytest tests/integration -q
+uv run pytest tests/smoke -q
+npm run lint --workspace @aeris/web
+npm run typecheck --workspace @aeris/web
 ```
+
+## Immediate next milestones
+
+1. Build the canonical observability schema beyond the bootstrap envelope.
+2. Implement the ingestion API with persistence.
+3. Replace the web shell placeholders with timeline, run detail, and evidence panel slices.
+4. Add Google Drive and arXiv connectors with provenance retention.
+
+## Migrations
+
+The first Postgres canonical migration lives in:
+
+- `packages/schema/migrations/0001_canonical_schema.up.sql`
+- `packages/schema/migrations/0001_canonical_schema.down.sql`
+
+This migration covers:
+
+- `sessions`
+- `traces`
+- `steps`
+- `observations`
+- `state_deltas`
+- `artifacts`
+- `evidence_edges`
+- `claims`
+- `explanation_records`
+- `evaluations`
+- `interventions`
+
+It intentionally does not yet include `spans`, `tasks`, `plan_versions`, or research-ingestion tables.
+
+## Notes
+
+- `.agents/skills/` and `.codex/` are workflow infrastructure. Do not modify them unless the task explicitly targets that infrastructure.
+- Validation evidence for major work belongs in `reports/validation/`.
+- Move completed plans from `plans/active/` to `plans/done/` only after validation passes.
