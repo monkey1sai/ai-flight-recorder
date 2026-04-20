@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aeris-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aeris-api
+  template:
+    metadata:
+      labels:
+        app: aeris-api
+    spec:
+      containers:
+        - name: api
+          image: aeris/api:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: postgresql://postgres:postgres@aeris-postgres:5432/aeris
+            - name: REDIS_URL
+              value: redis://aeris-redis:6379/0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aeris-api
+spec:
+  selector:
+    app: aeris-api
+  ports:
+    - port: 8080
+      targetPort: 8080

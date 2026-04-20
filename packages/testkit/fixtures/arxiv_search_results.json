@@ -1,0 +1,51 @@
+{
+  "query": "faithful explanations provenance",
+  "items": [
+    {
+      "id": "arxiv:2501.01234",
+      "title": "Faithful Provenance Tracing for Tool-Using Language Models",
+      "summary": "Proposes a provenance-first evaluation frame for tool-using agents and compares trace-based explanations against post-hoc summaries.",
+      "authors": ["A. Researcher", "B. Scientist"],
+      "published_at": "2025-01-04T00:00:00Z",
+      "mime_type": "application/json",
+      "content_ref": "s3://aeris-fixtures/arxiv/2501.01234.json",
+      "tags": ["arxiv", "provenance", "faithfulness"],
+      "provenance": {
+        "source_type": "arxiv",
+        "source_id": "2501.01234",
+        "source_uri": "https://arxiv.org/abs/2501.01234",
+        "retrieved_at": "2026-04-17T11:00:11Z",
+        "query": "faithful explanations provenance",
+        "license_or_terms_note": "Metadata only; PDF is referenced, not redistributed.",
+        "checksum": "sha256:arxiv-2501-01234",
+        "metadata_json": {
+          "primary_category": "cs.AI",
+          "pdf_url": "https://arxiv.org/pdf/2501.01234.pdf"
+        }
+      }
+    },
+    {
+      "id": "arxiv:2502.04567",
+      "title": "Auditable Agent Timelines with Claim-Level Evidence Links",
+      "summary": "Builds claim-level evidence graphs for replay and audit workflows and measures unsupported explanation rates.",
+      "authors": ["C. Author"],
+      "published_at": "2025-02-12T00:00:00Z",
+      "mime_type": "application/json",
+      "content_ref": "s3://aeris-fixtures/arxiv/2502.04567.json",
+      "tags": ["arxiv", "audit", "timeline"],
+      "provenance": {
+        "source_type": "arxiv",
+        "source_id": "2502.04567",
+        "source_uri": "https://arxiv.org/abs/2502.04567",
+        "retrieved_at": "2026-04-17T11:00:11Z",
+        "query": "faithful explanations provenance",
+        "license_or_terms_note": "Metadata only; PDF is referenced, not redistributed.",
+        "checksum": "sha256:arxiv-2502-04567",
+        "metadata_json": {
+          "primary_category": "cs.LG",
+          "pdf_url": "https://arxiv.org/pdf/2502.04567.pdf"
+        }
+      }
+    }
+  ]
+}

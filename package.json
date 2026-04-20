@@ -1,0 +1,18 @@
+{
+  "name": "aeris",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "devDependencies": {
+    "next": "^16.0.0"
+  },
+  "overrides": {
+    "brace-expansion": "file:vendor/npm/brace-expansion-1.1.14.tgz"
+  },
+  "scripts": {
+    "setup:web": "npm install --workspaces --include-workspace-root",
+    "lint": "npm run lint --workspace @aeris/web",
+    "typecheck": "npm run typecheck --workspace @aeris/web"
+  }
+}

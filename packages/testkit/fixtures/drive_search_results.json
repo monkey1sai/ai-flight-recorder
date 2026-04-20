@@ -1,0 +1,51 @@
+{
+  "query": "incident notes",
+  "items": [
+    {
+      "id": "drive:incident-notes",
+      "title": "Production Incident Notes",
+      "summary": "Runbook excerpts and operator annotations for the stale deployment manifest incident.",
+      "authors": ["Ops Team"],
+      "published_at": "2026-04-16T09:30:00Z",
+      "mime_type": "application/vnd.google-apps.document",
+      "content_ref": "s3://aeris-fixtures/drive/incident-notes.json",
+      "tags": ["drive", "incident", "runbook"],
+      "provenance": {
+        "source_type": "drive",
+        "source_id": "incident-notes",
+        "source_uri": "https://drive.google.com/file/d/incident-notes",
+        "retrieved_at": "2026-04-17T11:00:07Z",
+        "query": "incident notes",
+        "license_or_terms_note": "Private workspace document; metadata and export refs only.",
+        "checksum": "sha256:drive-doc-1",
+        "metadata_json": {
+          "mimeType": "application/vnd.google-apps.document",
+          "modifiedTime": "2026-04-16T09:30:00Z"
+        }
+      }
+    },
+    {
+      "id": "drive:decision-log",
+      "title": "Operator Decision Log",
+      "summary": "Decision log capturing why remediation choices require human review.",
+      "authors": ["Platform Team"],
+      "published_at": "2026-04-15T08:00:00Z",
+      "mime_type": "application/vnd.google-apps.document",
+      "content_ref": "s3://aeris-fixtures/drive/decision-log.json",
+      "tags": ["drive", "decision-log", "policy"],
+      "provenance": {
+        "source_type": "drive",
+        "source_id": "decision-log",
+        "source_uri": "https://drive.google.com/file/d/decision-log",
+        "retrieved_at": "2026-04-17T11:00:07Z",
+        "query": "incident notes",
+        "license_or_terms_note": "Private workspace document; metadata and export refs only.",
+        "checksum": "sha256:drive-doc-2",
+        "metadata_json": {
+          "mimeType": "application/vnd.google-apps.document",
+          "modifiedTime": "2026-04-15T08:00:00Z"
+        }
+      }
+    }
+  ]
+}

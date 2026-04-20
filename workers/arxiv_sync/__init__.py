@@ -1,0 +1,2 @@
+"""arXiv sync worker placeholder."""
+

@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aeris-edge-daemon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aeris-edge-daemon
+  template:
+    metadata:
+      labels:
+        app: aeris-edge-daemon
+    spec:
+      containers:
+        - name: edge-daemon
+          image: aeris/edge-daemon:latest
+          env:
+            - name: AERIS_OTLP_ENDPOINT
+              value: http://otel-collector:4318/v1/traces
+            - name: AERIS_SPOOL_DIR
+              value: /var/spool/aeris
+            - name: AERIS_BLOB_DIR
+              value: /var/blob/aeris
