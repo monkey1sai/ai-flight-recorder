@@ -1,0 +1,96 @@
+name: Codex Advisory Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  codex_preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      has_openai_api_key: ${{ steps.check_secret.outputs.has_openai_api_key }}
+    steps:
+      - name: Check OpenAI API key presence
+        id: check_secret
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+            echo "has_openai_api_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_openai_api_key=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  codex_review:
+    needs: codex_preflight
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && needs.codex_preflight.outputs.has_openai_api_key == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      final_message: ${{ steps.run_codex.outputs.final-message }}
+    steps:
+      - name: Checkout merge ref
+        uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: Pre-fetch base and head refs
+        run: |
+          git fetch --no-tags origin \
+            ${{ github.event.pull_request.base.ref }} \
+            +refs/pull/${{ github.event.pull_request.number }}/head
+
+      - name: Run Codex advisory review
+        id: run_codex
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/review.md
+          output-file: codex-review.md
+          safety-strategy: drop-sudo
+          sandbox: read-only
+
+      - name: Note advisory failure
+        if: steps.run_codex.outcome == 'failure'
+        run: |
+          echo "::warning::Codex advisory review failed. Leaving the workflow non-blocking because this review is advisory-only."
+
+      - name: Upload advisory output
+        if: steps.run_codex.outputs.final-message != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-advisory-review
+          path: codex-review.md
+
+  post_feedback:
+    runs-on: ubuntu-latest
+    needs: codex_review
+    if: needs.codex_review.outputs.final_message != ''
+    steps:
+      - name: Post Codex advisory comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: process.env.CODEX_FINAL_MESSAGE,
+            });
+        env:
+          CODEX_FINAL_MESSAGE: ${{ needs.codex_review.outputs.final_message }}
