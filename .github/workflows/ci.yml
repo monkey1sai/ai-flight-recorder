@@ -1,0 +1,170 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  component-presence:
+    runs-on: ubuntu-latest
+    outputs:
+      has_python: ${{ steps.detect.outputs.has_python }}
+      has_node: ${{ steps.detect.outputs.has_node }}
+      has_rust: ${{ steps.detect.outputs.has_rust }}
+      has_compose: ${{ steps.detect.outputs.has_compose }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Detect versioned components
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -f pyproject.toml ]]; then
+            echo "has_python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -f package.json && -f package-lock.json && -f apps/web/package.json ]]; then
+            echo "has_node=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_node=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -f edge/daemon/Cargo.toml ]]; then
+            echo "has_rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -f infra/compose/docker-compose.yml ]]; then
+            echo "has_compose=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_compose=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Fail if generated directories are tracked
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked_generated="$(git ls-files | grep -E '(^|/)(node_modules|__pycache__|\.pytest_cache|\.ruff_cache|\.mypy_cache|\.uv-cache|\.venv|target)(/|$)' || true)"
+          if [[ -n "${tracked_generated}" ]]; then
+            echo "Tracked generated files/directories detected:"
+            echo "${tracked_generated}"
+            exit 1
+          fi
+
+      - name: Fail if secret-like files are tracked
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked_secret_like="$(git ls-files | grep -E '(^|/)\.env($|\.)|(^|/)[^/]+\.(pem|key|crt|cer|p12|pfx)$|(^|/)(auth\.json|credentials\.json)$' || true)"
+          if [[ -n "${tracked_secret_like}" ]]; then
+            echo "Tracked secret-like files detected:"
+            echo "${tracked_secret_like}"
+            exit 1
+          fi
+
+  python:
+    needs: component-presence
+    if: needs.component-presence.outputs.has_python == 'true'
+    runs-on: windows-latest
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python dependencies
+        run: uv sync --group dev
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy apps packages workers tests
+
+      - name: Unit tests
+        run: uv run python -m pytest tests/unit -q -p no:cacheprovider
+
+      - name: Integration tests
+        run: uv run python -m pytest tests/integration -q -p no:cacheprovider
+
+      - name: E2E tests
+        run: uv run python -m pytest tests/e2e -q -p no:cacheprovider
+
+      - name: Smoke tests
+        run: uv run python -m pytest tests/smoke -q -p no:cacheprovider
+
+  node:
+    needs: component-presence
+    if: needs.component-presence.outputs.has_node == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Node dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: ESLint
+        run: npm run lint --workspace @aeris/web
+
+      - name: TypeScript
+        run: npm run typecheck --workspace @aeris/web
+
+  rust:
+    needs: component-presence
+    if: needs.component-presence.outputs.has_rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Cargo check
+        run: cargo check --manifest-path edge/daemon/Cargo.toml
+
+  docker-compose:
+    needs: component-presence
+    if: needs.component-presence.outputs.has_compose == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate docker compose
+        run: docker compose -f infra/compose/docker-compose.yml config > /tmp/aeris-compose.rendered.yml
