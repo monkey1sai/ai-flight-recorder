@@ -17,8 +17,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  codex_preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      has_openai_api_key: ${{ steps.check_secret.outputs.has_openai_api_key }}
+    steps:
+      - name: Check OpenAI API key presence
+        id: check_secret
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+            echo "has_openai_api_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_openai_api_key=false" >> "$GITHUB_OUTPUT"
+          fi
+
   codex_review:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    needs: codex_preflight
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && needs.codex_preflight.outputs.has_openai_api_key == 'true'
     runs-on: ubuntu-latest
     outputs:
       final_message: ${{ steps.run_codex.outputs.final-message }}
@@ -36,6 +55,7 @@ jobs:
 
       - name: Run Codex advisory review
         id: run_codex
+        continue-on-error: true
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -43,6 +63,11 @@ jobs:
           output-file: codex-review.md
           safety-strategy: drop-sudo
           sandbox: read-only
+
+      - name: Note advisory failure
+        if: steps.run_codex.outcome == 'failure'
+        run: |
+          echo "::warning::Codex advisory review failed. Leaving the workflow non-blocking because this review is advisory-only."
 
       - name: Upload advisory output
         if: steps.run_codex.outputs.final-message != ''
