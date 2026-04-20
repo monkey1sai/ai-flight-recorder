@@ -172,6 +172,8 @@ Rollback / containment
 - [x] 2026-04-20 05:52 UTC completed Milestone 1 by aligning root metadata naming to `aeris` and expanding `.gitignore` to cover generated directories, toolchain homes, and local machine config
 - [x] 2026-04-20 06:03 UTC completed Milestone 2 by adding CI, Codex advisory review workflow, review prompt, PR template, CODEOWNERS, and governance docs
 - [x] 2026-04-20 06:18 UTC completed Milestone 3 by adding local verification scripts, running available checks, and writing `reports/codex/bootstrap-governance-audit.md`
+- [x] 2026-04-20 06:29 UTC fixed the governance CI workflow so optional Python, Node, Rust, and docker-compose jobs only run when the corresponding versioned files exist in the checked-out PR contents; also enabled `push` CI on `master`
+- [x] 2026-04-20 06:33 UTC tightened the Codex advisory workflow permissions by removing unnecessary `pull-requests: write` access and keeping only the scopes required to post an issue-style PR comment
 
 ## 7. Research notes
 
@@ -197,6 +199,7 @@ Rollback / containment
 - Local Docker only exposes `docker-compose`, while GitHub-hosted CI is expected to support `docker compose`.
 - Repo-local npm wrappers work when invoked directly, so the PowerShell verification script was updated to prefer `tools/bin/npm.ps1`.
 - Rust validation can avoid home-directory permission errors with repo-local `CARGO_HOME` / `RUSTUP_HOME`, but still needs a configured default toolchain to pass.
+- The first governance PR only versioned governance artifacts, while local product skeleton files remained untracked; GitHub Actions therefore checked out a much smaller repo snapshot than the local workspace and failed on missing manifests rather than on real test failures.
 
 ## 9. Decision log
 
@@ -216,10 +219,20 @@ Rollback / containment
   Rationale: sandboxed direct `npm` execution showed Node runtime / install-directory instability, while `tools/bin/npm.ps1` completed lint and typecheck successfully.
   Alternatives rejected: forcing system `npm` or embedding installation logic into governance scripts.
 
+- 2026-04-20: gate optional CI jobs behind a tracked-file presence probe instead of assuming Python, Node, Rust, and compose assets already exist in every PR.
+  Rationale: the governance baseline PR only contains governance files, so unconditional language-specific jobs fail on missing manifests and block review even though the workflow itself is the only subject under test.
+  Alternatives rejected: committing unrelated product skeleton files just to satisfy CI, or deleting the optional jobs entirely.
+
+- 2026-04-20: remove `pull-requests: write` from the Codex advisory workflow.
+  Rationale: the workflow only reads PR metadata, checks out the merge ref, and posts a top-level PR conversation comment through the Issues API; `issues: write` is sufficient for that path.
+  Alternatives rejected: leaving broader write access in place for convenience.
+
 ## 10. Validation plan
 
 - `git -c safe.directory='C:/Repos/active/ai-agent/AI-Flight-Recorder' status --short`
 - `git -c safe.directory='C:/Repos/active/ai-agent/AI-Flight-Recorder' ls-files`
+- inspect GitHub Actions logs for the failing `CI` run attached to PR `#1`
+- review `.github/workflows/ci.yml` diff after the fix
 - `uv run ruff check .`
 - `uv run mypy apps packages workers tests`
 - `uv run python -m pytest tests/unit -q`
@@ -255,4 +268,4 @@ Rollback / containment
 
 ## 13. Completion note
 
-Completed on 2026-04-20. Governance baseline artifacts, naming alignment, local verification entrypoints, and the audit report were added without touching product behavior. Remaining gaps are documented in `reports/codex/bootstrap-governance-audit.md`, especially the sandboxed Windows Python runtime failures for non-smoke pytest suites and the missing default Rust toolchain for repo-local cargo validation.
+Completed on 2026-04-20. Governance baseline artifacts, naming alignment, local verification entrypoints, the audit report, and a follow-up CI gating fix were added without touching product behavior. Remaining gaps are documented in `reports/codex/bootstrap-governance-audit.md`, especially the sandboxed Windows Python runtime failures for non-smoke pytest suites and the missing default Rust toolchain for repo-local cargo validation; the workflow follow-up evidence lives in `reports/validation/20260420-governance-ci-followup.md`.

@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches:
+      - master
       - main
 
 permissions:
@@ -14,6 +15,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  component-presence:
+    runs-on: ubuntu-latest
+    outputs:
+      has_python: ${{ steps.detect.outputs.has_python }}
+      has_node: ${{ steps.detect.outputs.has_node }}
+      has_rust: ${{ steps.detect.outputs.has_rust }}
+      has_compose: ${{ steps.detect.outputs.has_compose }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Detect versioned components
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -f pyproject.toml ]]; then
+            echo "has_python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -f package.json && -f package-lock.json && -f apps/web/package.json ]]; then
+            echo "has_node=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_node=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -f edge/daemon/Cargo.toml ]]; then
+            echo "has_rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -f infra/compose/docker-compose.yml ]]; then
+            echo "has_compose=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_compose=false" >> "$GITHUB_OUTPUT"
+          fi
+
   repo-hygiene:
     runs-on: ubuntu-latest
     steps:
@@ -43,6 +85,8 @@ jobs:
           fi
 
   python:
+    needs: component-presence
+    if: needs.component-presence.outputs.has_python == 'true'
     runs-on: windows-latest
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
@@ -80,6 +124,8 @@ jobs:
         run: uv run python -m pytest tests/smoke -q -p no:cacheprovider
 
   node:
+    needs: component-presence
+    if: needs.component-presence.outputs.has_node == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -102,6 +148,8 @@ jobs:
         run: npm run typecheck --workspace @aeris/web
 
   rust:
+    needs: component-presence
+    if: needs.component-presence.outputs.has_rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -111,6 +159,8 @@ jobs:
         run: cargo check --manifest-path edge/daemon/Cargo.toml
 
   docker-compose:
+    needs: component-presence
+    if: needs.component-presence.outputs.has_compose == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
