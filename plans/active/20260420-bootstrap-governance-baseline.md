@@ -175,6 +175,7 @@ Rollback / containment
 - [x] 2026-04-20 06:29 UTC fixed the governance CI workflow so optional Python, Node, Rust, and docker-compose jobs only run when the corresponding versioned files exist in the checked-out PR contents; also enabled `push` CI on `master`
 - [x] 2026-04-20 06:33 UTC tightened the Codex advisory workflow permissions by removing unnecessary `pull-requests: write` access and keeping only the scopes required to post an issue-style PR comment
 - [x] 2026-04-20 07:39 UTC made the Codex advisory workflow non-blocking by adding secret preflight detection and allowing transient `openai/codex-action` failures to degrade to warnings instead of a red PR check
+- [x] 2026-04-20 08:08 UTC audited the current working tree for PR-000 scoping, added `.gitattributes` to reduce LF/CRLF churn on governance files, and updated the governance audit with exact PR-000 versus PR-001 file boundaries
 
 ## 7. Research notes
 
@@ -184,7 +185,7 @@ Rollback / containment
   Confidence: high
 
 - Source: current git status / `git ls-files`
-  Finding: monorepo skeleton files are currently untracked, while cache directories like `node_modules` and `.venv` are present locally but not tracked.
+  Finding: monorepo skeleton files are currently untracked, while cache directories like `node_modules/` and `.venv/` are present locally but not tracked.
   Why it matters: governance work must avoid accidentally staging generated directories and should strengthen ignore rules before future PRs.
   Confidence: high
 
@@ -202,6 +203,7 @@ Rollback / containment
 - Rust validation can avoid home-directory permission errors with repo-local `CARGO_HOME` / `RUSTUP_HOME`, but still needs a configured default toolchain to pass.
 - The first governance PR only versioned governance artifacts, while local product skeleton files remained untracked; GitHub Actions therefore checked out a much smaller repo snapshot than the local workspace and failed on missing manifests rather than on real test failures.
 - `openai/codex-action@v1` can still create a red check even for advisory-only review when the Responses API proxy never writes its server info file; in practice this presents as repeated `ENOENT` reads from `/home/runner/.codex/<run-id>.json`.
+- This Windows workspace still emits repeated `LF will be replaced by CRLF` warnings when governance files are touched, so `.gitattributes` is needed to keep future governance-only PRs readable and avoid reviewer noise.
 
 ## 9. Decision log
 
@@ -233,6 +235,10 @@ Rollback / containment
   Rationale: OpenAI's troubleshooting notes say the missing server info file means the proxy did not start because the API key is absent or invalid; this is operational misconfiguration, not a code-quality regression, so the workflow should warn and skip rather than block merge.
   Alternatives rejected: leaving the workflow hard-failing on secret/config drift, or deleting the review workflow entirely.
 
+- 2026-04-20: add a minimal `.gitattributes` for governance files.
+  Rationale: the current Windows worktree keeps warning about LF/CRLF rewrites in workflows, docs, and scripts; explicit eol rules reduce diff noise and make PR-000 easier to review safely.
+  Alternatives rejected: leaving line ending behavior implicit and asking reviewers to ignore churn.
+
 ## 10. Validation plan
 
 - `git -c safe.directory='C:/Repos/active/ai-agent/AI-Flight-Recorder' status --short`
@@ -241,6 +247,8 @@ Rollback / containment
 - inspect GitHub Actions logs for the failing `Codex Advisory Review` run attached to PR `#1`
 - review `.github/workflows/ci.yml` diff after the fix
 - review `.github/workflows/codex-review.yml` diff after the fix
+- review current `git status --short --branch` to confirm PR-000 staging boundaries
+- review `.gitattributes` necessity based on repeated LF/CRLF warnings
 - `uv run ruff check .`
 - `uv run mypy apps packages workers tests`
 - `uv run python -m pytest tests/unit -q`

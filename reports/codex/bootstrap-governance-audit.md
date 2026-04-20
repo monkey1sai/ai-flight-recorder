@@ -316,6 +316,7 @@ Result:
 ## 7. Files changed in this governance pass
 
 - `.gitignore`
+- `.gitattributes`
 - `.github/workflows/ci.yml`
 - `.github/workflows/codex-review.yml`
 - `.github/codex/prompts/review.md`
@@ -331,15 +332,139 @@ Result:
 - `pyproject.toml`
 - `uv.lock`
 
-## 8. Remaining risks / follow-up
+## 8. Recommended PR-000 scope
+
+治理-only 的 PR-000 建議只包含下列檔案：
+
+- `.gitignore`
+- `.gitattributes`
+- `.github/workflows/ci.yml`
+- `.github/workflows/codex-review.yml`
+- `.github/codex/prompts/review.md`
+- `.github/pull_request_template.md`
+- `CODEOWNERS`
+- `docs/DEVELOPMENT_WORKFLOW.md`
+- `docs/BRANCHING.md`
+- `docs/DEFINITION_OF_DONE.md`
+- `scripts/verify-local.ps1`
+- `scripts/verify-local.sh`
+- `plans/active/20260420-bootstrap-governance-baseline.md`
+- `reports/codex/bootstrap-governance-audit.md`
+- `reports/validation/20260420-governance-ci-followup.md`
+
+這些檔案都屬於 governance、review、CI、DoD、或驗證證據邊界，適合作為單一治理基線 PR。
+
+## 9. Recommended PR-001 defer list
+
+PR-000 應明確排除以下檔案與目錄，延後到 PR-001 之後的 product / platform PR：
+
+- `apps/`
+- `edge/`
+- `packages/`
+- `workers/`
+- `tests/`
+- `infra/`
+- `vendor/`
+- `docs/architecture/`
+- `package.json`
+- `package-lock.json`
+- `pyproject.toml`
+- `uv.lock`
+- `Makefile`
+- `README.md`
+- `總覽.md`
+- `.codex/`
+- `tools/`
+- `scripts/build_offline_python_wheelhouse.py`
+- `plans/active/20260417-bootstrap-monorepo.md`
+- `plans/active/20260417-canonical-schema-migrations.md`
+- `plans/active/20260417-platform-slices-3-10.md`
+- `reports/validation/20260417-bootstrap-monorepo.md`
+- `reports/validation/20260417-canonical-schema-migrations.md`
+- `reports/validation/20260417-platform-slices-3-10.md`
+
+這些內容不是治理-only 的最小邊界；若混入 PR-000，review 成本會大幅提高，也會掩蓋真正該先審的治理基線。
+
+## 10. Current workflow safety review
+
+### 10.1 `.github/workflows/codex-review.yml`
+
+檢查結果：
+
+- 未使用 `pull_request_target`
+- workflow event 為 `pull_request`
+- `permissions` 只有：
+  - `contents: read`
+  - `issues: write`
+- 沒有 `contents: write`、`actions: write`、`pull-requests: write`、`write-all`
+- `codex_review` 只在：
+  - PR 非 draft
+  - `head.repo.full_name == github.repository`
+  - `OPENAI_API_KEY` 存在
+  時執行
+- `openai/codex-action@v1` 已設為 `continue-on-error: true`
+- 若 action 失敗，只留下 warning，不再讓 advisory review 變成 blocking red check
+
+Secret exposure risk assessment：
+
+- 低風險：沒有 `pull_request_target`
+- 低風險：fork PR 不會拿到 repo secret；同 repo PR 才可能進入 review job
+- 低風險：preflight 只檢查 secret 是否存在，不輸出 secret 值
+- 可接受：workflow 仍把 `OPENAI_API_KEY` 傳給 action，但這是 action 官方文件的預期使用方式
+
+### 10.2 `.github/workflows/ci.yml`
+
+檢查結果：
+
+- 已具備 defensive presence gating
+- 若 `package.json`、`package-lock.json`、`pyproject.toml`、`edge/daemon/Cargo.toml`、`infra/compose/docker-compose.yml` 不存在，對應 job 會 `skipped`，不會直接 fail
+- 這符合 PR-000 的最小治理邊界，因為 governance PR 不需要強迫納入尚未版本化的 product skeleton
+
+## 11. Validation commands run
+
+本次為 PR-000 邊界確認實際執行或人工檢查的命令：
+
+```powershell
+git -c safe.directory='C:/Repos/active/ai-agent/AI-Flight-Recorder' status --short --branch
+git -c safe.directory='C:/Repos/active/ai-agent/AI-Flight-Recorder' ls-files
+Get-Content .github/workflows/ci.yml -Raw
+Get-Content .github/workflows/codex-review.yml -Raw
+Get-Content CODEOWNERS -Raw
+Get-Content .gitignore -Raw
+Get-Content scripts/verify-local.ps1 -Raw
+Get-Content scripts/verify-local.sh -Raw
+Get-Content docs/DEVELOPMENT_WORKFLOW.md -Raw
+Get-Content docs/BRANCHING.md -Raw
+Get-Content docs/DEFINITION_OF_DONE.md -Raw
+Get-Content reports/codex/bootstrap-governance-audit.md -Raw
+```
+
+額外驗證：
+
+- 檢查 `.gitattributes` 先前不存在
+- 人工比對目前 `git status` 中的非治理檔案，確認應從 PR-000 排除
+- 人工檢查 workflow 內是否存在 `pull_request_target`、過高 write 權限、或明顯 secret echo
+
+## 12. Remaining risks / follow-up
 
 - 目前 repo 的大多數實作骨架仍是未追蹤狀態，未來第一個真正功能 PR 必須非常小心 staging 範圍。
 - `README.md` 目前已有使用者未提交修改；這次治理變更沒有碰它。
 - Python unit/integration/e2e 測試目前仍缺少乾淨的可重現通過證據。
 - Rust 本地檢查仍依賴可用的 default toolchain 設定。
 - `scripts/verify-local.sh` 尚未在本機 Bash 環境實測。
+- 目前 local branch 相對 `origin/codex/p0-governance-baseline` 顯示 `ahead 1`，且工作樹仍含大量未追蹤 product skeleton；在沒有重新整理 branch 狀態前，不應直接使用廣泛 `git add .`
 
-## 9. Conclusion
+## 13. Safe-to-open assessment
+
+- 以「治理-only 精簡檔案清單」來看：可以安全開 Draft PR
+- 以「目前整個工作樹直接送 PR」來看：不安全
+
+原因：
+
+- 目前工作樹仍含 `README.md` 修改與大量未追蹤 product/platform 檔案
+- 若不用精確 `git add` 清單，很容易把 PR-001 以後才該進的內容一併混入 PR-000
+
+## 14. Conclusion
 
 治理基線已建立完成，可以支撐後續以小 PR 方式逐步開發：
 
