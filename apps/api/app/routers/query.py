@@ -8,7 +8,9 @@ from apps.api.app.dependencies import get_trace_workbench_service
 from apps.api.app.services import TraceWorkbenchService
 from packages.schema.flight_recorder_schema import (
     ClaimEvidenceFlowView,
+    PlanVersionRecord,
     StateDiffEntryView,
+    TaskStateView,
     TimelineEntryView,
     TraceBundleView,
     TraceSummaryView,
@@ -66,3 +68,25 @@ def get_claim_evidence(
     if not claim_flow:
         raise HTTPException(status_code=404, detail="trace not found")
     return claim_flow
+
+
+@router.get("/{trace_id}/task", response_model=TaskStateView)
+def get_task_state(
+    trace_id: UUID,
+    service: TraceWorkbenchService = Depends(get_trace_workbench_service),
+) -> TaskStateView:
+    task_state = service.get_task_state(trace_id)
+    if task_state is None:
+        raise HTTPException(status_code=404, detail="trace task not found")
+    return task_state
+
+
+@router.get("/{trace_id}/plan-history", response_model=list[PlanVersionRecord])
+def get_plan_history(
+    trace_id: UUID,
+    service: TraceWorkbenchService = Depends(get_trace_workbench_service),
+) -> list[PlanVersionRecord]:
+    plan_history = service.get_plan_history(trace_id)
+    if not plan_history:
+        raise HTTPException(status_code=404, detail="trace plan history not found")
+    return plan_history

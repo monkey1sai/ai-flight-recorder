@@ -1,11 +1,15 @@
 import { notFound } from "next/navigation";
 
+import { PlanHistoryPanel } from "../../../components/plan-history-panel";
 import { StateDiffPanel } from "../../../components/state-diff-panel";
+import { TaskSummaryPanel } from "../../../components/task-summary-panel";
 import { TraceTimeline } from "../../../components/trace-timeline";
 import { WhyPanel } from "../../../components/why-panel";
 import {
   getClaimFlows,
+  getPlanHistory,
   getStateDiffEntries,
+  getTaskState,
   getTimelineEntries,
   getTraceBundle,
 } from "../../../lib/api";
@@ -22,10 +26,12 @@ export default async function TraceDetailPage({
     notFound();
   }
 
-  const [timelineEntries, stateDiffs, claimFlows] = await Promise.all([
+  const [timelineEntries, stateDiffs, claimFlows, taskState, planHistory] = await Promise.all([
     getTimelineEntries(traceId),
     getStateDiffEntries(traceId),
     getClaimFlows(traceId),
+    getTaskState(traceId),
+    getPlanHistory(traceId),
   ]);
 
   return (
@@ -33,10 +39,25 @@ export default async function TraceDetailPage({
       <section className="section-copy">
         <h1>Trace Detail</h1>
         <p>
-          Trace `{bundle.trace.id}` captures the operator slice end-to-end: timeline, state change,
-          claim/evidence linkage, and final synthesis. This page reads live API detail, state-diff,
-          and claim-evidence surfaces first, with fixture fallback for local browsing.
+          Trace `{bundle.trace.id}` captures the operator slice end-to-end: task framing, plan
+          revision, state change, research steps, and final synthesis. This page reads live API
+          detail, cognitive-state, state-diff, and claim-evidence surfaces first, with fixture
+          fallback for local browsing.
         </p>
+      </section>
+      <section className="stack-section">
+        <div className="section-copy">
+          <h2>Task / Current State</h2>
+          <p>The cognitive slice makes the active task, latest plan revision, and latest state snapshot explicit.</p>
+        </div>
+        <TaskSummaryPanel taskState={taskState} />
+      </section>
+      <section className="stack-section">
+        <div className="section-copy">
+          <h2>Plan History</h2>
+          <p>Plan versions stay append-only and keep a direct link back to the originating step.</p>
+        </div>
+        <PlanHistoryPanel plans={planHistory} />
       </section>
       <section className="stack-section">
         <div className="section-copy">

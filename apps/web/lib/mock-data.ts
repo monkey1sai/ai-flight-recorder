@@ -35,6 +35,7 @@ export interface SessionRecord {
 export interface TraceRecord {
   id: string;
   session_id: string;
+  task_id?: string;
   model_name?: string;
   trace_kind: string;
   started_at: string;
@@ -57,6 +58,18 @@ export interface StepRecord {
   metadata_json?: Record<string, unknown>;
 }
 
+export interface TaskRecord {
+  id: string;
+  session_id: string;
+  trace_id: string;
+  title: string;
+  status: TraceStatus;
+  owner?: string;
+  summary?: string;
+  metadata_json?: Record<string, unknown>;
+  created_at?: string;
+}
+
 export interface ObservationRecord {
   id: string;
   step_id: string;
@@ -74,6 +87,29 @@ export interface StateDeltaRecord {
   before_json?: Record<string, unknown>;
   after_json?: Record<string, unknown>;
   metadata_json?: Record<string, unknown>;
+}
+
+export interface PlanVersionRecord {
+  id: string;
+  task_id: string;
+  trace_id: string;
+  step_id?: string;
+  revision: number;
+  summary?: string;
+  plan_json: Record<string, unknown>;
+  metadata_json?: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface StateSnapshotRecord {
+  id: string;
+  trace_id: string;
+  step_id?: string;
+  task_id?: string;
+  snapshot_index: number;
+  state_json: Record<string, unknown>;
+  metadata_json?: Record<string, unknown>;
+  created_at?: string;
 }
 
 export interface ArtifactRecord {
@@ -192,22 +228,19 @@ export interface ResearchSearchResult {
 
 export interface TraceSummary {
   traceId: string;
-  status: TraceStatus;
+  status: string;
   modelName: string;
   stepCount: number;
   claimCount: number;
   policyFlags: number;
 }
 
-export interface GovernanceSnapshot {
-  auditEvents: AuditEventRecord[];
-  policies: PolicyRuleRecord[];
-  retention: RetentionPolicyRecord[];
-}
-
 export interface TraceBundle {
   session: SessionRecord;
   trace: TraceRecord;
+  tasks: TaskRecord[];
+  plan_versions: PlanVersionRecord[];
+  state_snapshots: StateSnapshotRecord[];
   steps: StepRecord[];
   observations: ObservationRecord[];
   state_deltas: StateDeltaRecord[];
@@ -246,7 +279,21 @@ export interface ReplayFrame {
   interventions: InterventionRecord[];
 }
 
-const traceBundle = traceBundleSeed as TraceBundle;
+export interface GovernanceSnapshot {
+  auditEvents: AuditEventRecord[];
+  policies: PolicyRuleRecord[];
+  retention: RetentionPolicyRecord[];
+}
+
+export interface TaskState {
+  task: TaskRecord;
+  latestPlan?: PlanVersionRecord;
+  latestSnapshot?: StateSnapshotRecord;
+  planRevisionCount: number;
+  snapshotCount: number;
+}
+
+const traceBundle = normalizeTraceBundle(traceBundleSeed as Partial<TraceBundle>);
 const driveSearch = driveSearchSeed as ResearchSearchResult;
 const arxivSearch = arxivSearchSeed as ResearchSearchResult;
 
@@ -363,6 +410,8 @@ export const governanceSnapshot: GovernanceSnapshot = {
   policies: traceBundle.policies,
   retention: traceBundle.retention,
 };
+export const taskState: TaskState | undefined = buildTaskState(traceBundle);
+export const planHistory = traceBundle.plan_versions;
 export const researchCatalog = {
   drive: driveSearch,
   arxiv: arxivSearch,
@@ -374,4 +423,158 @@ export function getTraceBundleById(traceId: string): TraceBundle | undefined {
     return undefined;
   }
   return traceBundle;
+}
+
+function normalizeTraceBundle(seed: Partial<TraceBundle>): TraceBundle {
+  const session = seed.session as SessionRecord;
+  const trace = seed.trace as TraceRecord;
+  const steps = (seed.steps ?? []) as StepRecord[];
+  const stateDeltas = (seed.state_deltas ?? []) as StateDeltaRecord[];
+  const tasks = seed.tasks?.length ? seed.tasks : deriveTasks(session, trace, steps, stateDeltas);
+  const planVersions = seed.plan_versions?.length
+    ? seed.plan_versions
+    : derivePlanVersions(trace, steps, stateDeltas, tasks[0]);
+  const stateSnapshots = seed.state_snapshots?.length
+    ? seed.state_snapshots
+    : deriveStateSnapshots(trace, steps, stateDeltas, tasks[0]);
+
+  return {
+    session,
+    trace: {
+      ...trace,
+      task_id: trace.task_id ?? tasks[0]?.id,
+    },
+    tasks,
+    plan_versions: planVersions,
+    state_snapshots: stateSnapshots,
+    steps,
+    observations: (seed.observations ?? []) as ObservationRecord[],
+    state_deltas: stateDeltas,
+    artifacts: (seed.artifacts ?? []) as ArtifactRecord[],
+    evidence_edges: (seed.evidence_edges ?? []) as EvidenceEdgeRecord[],
+    claims: (seed.claims ?? []) as ClaimRecord[],
+    explanations: (seed.explanations ?? []) as ExplanationRecord[],
+    interventions: (seed.interventions ?? []) as InterventionRecord[],
+    audit_events: (seed.audit_events ?? []) as AuditEventRecord[],
+    policies: (seed.policies ?? []) as PolicyRuleRecord[],
+    retention: (seed.retention ?? []) as RetentionPolicyRecord[],
+  };
+}
+
+function deriveTasks(
+  session: SessionRecord,
+  trace: TraceRecord,
+  steps: StepRecord[],
+  stateDeltas: StateDeltaRecord[],
+): TaskRecord[] {
+  const title =
+    (typeof trace.metadata_json?.intent === "string" && trace.metadata_json.intent) ||
+    steps.find((step) => step.summary)?.summary ||
+    `Trace ${trace.id}`;
+  return [
+    {
+      id: trace.task_id ?? `task-${trace.id}`,
+      session_id: session.id,
+      trace_id: trace.id,
+      title,
+      status: trace.status,
+      owner: session.user_id,
+      summary:
+        (typeof trace.metadata_json?.intent === "string" && trace.metadata_json.intent) ||
+        steps.at(-1)?.summary,
+      created_at: trace.started_at,
+      metadata_json: {
+        workspace: session.metadata_json?.workspace,
+        facets: [...new Set(stateDeltas.map((item) => item.facet))],
+        derived_from: "mock-data",
+      },
+    },
+  ];
+}
+
+function derivePlanVersions(
+  trace: TraceRecord,
+  steps: StepRecord[],
+  stateDeltas: StateDeltaRecord[],
+  task?: TaskRecord,
+): PlanVersionRecord[] {
+  const planSteps = steps.filter((step) =>
+    step.step_type === "plan_update" ||
+    stateDeltas.some((delta) => delta.step_id === step.id && delta.facet === "plan_state"),
+  );
+
+  if (planSteps.length === 0 || !task) {
+    return [];
+  }
+
+  return planSteps.map((step, revision) => {
+    const planDelta = stateDeltas.find(
+      (delta) => delta.step_id === step.id && delta.facet === "plan_state",
+    );
+    return {
+      id: `plan-${task.id}-${revision}`,
+      task_id: task.id,
+      trace_id: trace.id,
+      step_id: step.id,
+      revision,
+      summary: step.summary,
+      plan_json: planDelta?.after_json ?? {
+        summary: step.summary,
+        metadata: step.metadata_json ?? {},
+      },
+      metadata_json: {
+        derived_from: "mock-data",
+      },
+      created_at: step.ended_at ?? step.started_at,
+    };
+  });
+}
+
+function deriveStateSnapshots(
+  trace: TraceRecord,
+  steps: StepRecord[],
+  stateDeltas: StateDeltaRecord[],
+  task?: TaskRecord,
+): StateSnapshotRecord[] {
+  const state: Record<string, unknown> = {};
+  const snapshots: StateSnapshotRecord[] = [];
+
+  for (const step of steps) {
+    const stepDeltas = stateDeltas.filter((delta) => delta.step_id === step.id);
+    if (stepDeltas.length === 0) {
+      continue;
+    }
+    for (const delta of stepDeltas) {
+      state[delta.facet] = delta.after_json ?? delta.before_json ?? {};
+    }
+    snapshots.push({
+      id: `snapshot-${trace.id}-${step.step_index}`,
+      trace_id: trace.id,
+      step_id: step.id,
+      task_id: task?.id,
+      snapshot_index: step.step_index,
+      state_json: { ...state },
+      metadata_json: {
+        derived_from: "mock-data",
+        facets: stepDeltas.map((delta) => delta.facet),
+      },
+      created_at: step.ended_at ?? step.started_at,
+    });
+  }
+
+  return snapshots;
+}
+
+function buildTaskState(bundle: TraceBundle): TaskState | undefined {
+  const task = bundle.tasks[0];
+  if (!task) {
+    return undefined;
+  }
+  return {
+    task,
+    latestPlan: bundle.plan_versions.at(-1),
+    latestSnapshot: bundle.state_snapshots.at(-1),
+    planRevisionCount: bundle.plan_versions.length,
+    snapshotCount: bundle.state_snapshots.length,
+  };
 }
