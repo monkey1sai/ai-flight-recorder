@@ -72,6 +72,34 @@ def test_research_and_admin_surfaces_expose_governance_metadata() -> None:
     assert len(admin_response.json()["policies"]) >= 1
 
 
+def test_research_sync_persists_corpus_and_cursor(monkeypatch) -> None:
+    monkeypatch.setenv("AERIS_REPOSITORY_BACKEND", "fixture")
+    _clear_dependency_caches()
+
+    drive_sync = client.post("/api/v1/research/drive/sync?q=incident notes")
+    arxiv_sync = client.post(
+        "/api/v1/research/arxiv/sync?q=faithful explanations provenance"
+    )
+    corpus_response = client.get("/api/v1/research/corpus?q=provenance")
+    sync_runs_response = client.get("/api/v1/research/sync-runs?source_type=arxiv")
+
+    assert drive_sync.status_code == 200
+    assert arxiv_sync.status_code == 200
+    assert drive_sync.json()["cursor"].startswith("drive-fixture:")
+    assert arxiv_sync.json()["cursor"].startswith("oai-fixture:")
+    assert corpus_response.status_code == 200
+    assert sync_runs_response.status_code == 200
+    assert any(
+        item["provenance"]["source_type"] == "arxiv"
+        and item["provenance"]["cursor"].startswith("oai-fixture:")
+        and item["provenance"]["export_status"] == "metadata_only"
+        for item in corpus_response.json()["items"]
+    )
+    assert sync_runs_response.json()[0]["source_type"] == "arxiv"
+
+    _clear_dependency_caches()
+
+
 def test_normalized_ingest_materializes_blob_refs(
     monkeypatch, tmp_path: Path
 ) -> None:

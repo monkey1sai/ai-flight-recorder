@@ -26,6 +26,12 @@ from packages.schema.flight_recorder_schema import (
     PlanVersionRecord,
     PolicyRuleRecord,
     ReplayFrameView,
+    ResearchCorpusView,
+    ResearchDocumentRecord,
+    ResearchSearchResponse,
+    ResearchSyncCursorRecord,
+    ResearchSyncReceipt,
+    ResearchSyncRunRecord,
     RetentionPolicyRecord,
     SessionRecord,
     StateDeltaRecord,
@@ -432,6 +438,128 @@ class PostgresTraceRepository:
             else sorted(bundle.state_snapshots, key=lambda item: item.snapshot_index)
         )
 
+    def upsert_research_documents(
+        self,
+        source_type: str,
+        response: ResearchSearchResponse,
+        cursor: str | None = None,
+        metadata_json: dict[str, object] | None = None,
+    ) -> ResearchSyncReceipt:
+        sync_run = ResearchSyncRunRecord(
+            id=uuid4(),
+            source_type=source_type,
+            query=response.query,
+            cursor=cursor,
+            status="completed",
+            item_count=len(response.items),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+            metadata_json=metadata_json or {},
+        )
+        with self._connect() as connection:
+            cursor_handle = connection.cursor()
+            self._upsert_research_sync_run(cursor_handle, sync_run)
+            for item in response.items:
+                persisted_item = item.model_copy(
+                    update={
+                        "provenance": item.provenance.model_copy(
+                            update={
+                                "query": response.query,
+                                "cursor": cursor,
+                            }
+                        )
+                    }
+                )
+                self._upsert_research_document(cursor_handle, persisted_item, sync_run.id)
+            if cursor is not None:
+                self._upsert_research_cursor(
+                    cursor_handle,
+                    ResearchSyncCursorRecord(
+                        source_type=source_type,
+                        cursor_key="default",
+                        cursor_value=cursor,
+                        updated_at=datetime.now(UTC),
+                        metadata_json=metadata_json or {},
+                    ),
+                )
+        return ResearchSyncReceipt(
+            sync_run_id=sync_run.id,
+            source_type=source_type,
+            query=response.query,
+            cursor=cursor,
+            item_count=len(response.items),
+            upserted_count=len(response.items),
+        )
+
+    def list_research_documents(
+        self,
+        source_type: str | None = None,
+        query: str = "",
+    ) -> ResearchCorpusView:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if source_type is not None:
+            conditions.append("source_type = %s")
+            params.append(source_type)
+        if query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            conditions.append(
+                "("
+                "lower(title) like %s or lower(summary) like %s "
+                "or exists ("
+                "select 1 from jsonb_array_elements_text(tags) as tag "
+                "where lower(tag) like %s"
+                ")"
+                ")"
+            )
+            params.extend([pattern, pattern, pattern])
+        where_clause = f"where {' and '.join(conditions)}" if conditions else ""
+        rows = self._fetch_all(
+            f"""
+            select *
+            from research_documents
+            {where_clause}
+            order by retrieved_at desc, title asc
+            """,
+            params,
+        )
+        items = [self._research_document_from_row(row) for row in rows]
+        return ResearchCorpusView(query=query, source_type=source_type, items=items)
+
+    def list_research_sync_runs(
+        self,
+        source_type: str | None = None,
+    ) -> list[ResearchSyncRunRecord]:
+        if source_type is None:
+            rows = self._fetch_all(
+                "select * from research_sync_runs order by started_at desc",
+                [],
+            )
+        else:
+            rows = self._fetch_all(
+                """
+                select * from research_sync_runs
+                where source_type = %s
+                order by started_at desc
+                """,
+                [source_type],
+            )
+        return [self._model(ResearchSyncRunRecord, row) for row in rows]
+
+    def get_research_cursor(
+        self,
+        source_type: str,
+        cursor_key: str = "default",
+    ) -> ResearchSyncCursorRecord | None:
+        row = self._fetch_one(
+            """
+            select * from research_sync_cursors
+            where source_type = %s and cursor_key = %s
+            """,
+            [source_type, cursor_key],
+        )
+        return None if row is None else self._model(ResearchSyncCursorRecord, row)
+
     def list_audit_events(self, trace_id: UUID | None = None) -> list[AuditEventRecord]:
         if trace_id is None:
             rows = self._fetch_all("select * from audit_events order by occurred_at", [])
@@ -539,6 +667,33 @@ class PostgresTraceRepository:
                 except json.JSONDecodeError:
                     return value
         return value
+
+    def _research_document_from_row(self, row: dict[str, Any]) -> ResearchDocumentRecord:
+        normalized = {key: self._decode_json(value) for key, value in row.items()}
+        return ResearchDocumentRecord.model_validate(
+            {
+                "id": normalized["id"],
+                "title": normalized["title"],
+                "summary": normalized["summary"],
+                "authors": normalized.get("authors", []),
+                "published_at": normalized.get("published_at"),
+                "mime_type": normalized.get("mime_type"),
+                "content_ref": normalized.get("content_ref"),
+                "tags": normalized.get("tags", []),
+                "provenance": {
+                    "source_type": normalized["source_type"],
+                    "source_id": normalized["source_id"],
+                    "source_uri": normalized["source_uri"],
+                    "retrieved_at": normalized["retrieved_at"],
+                    "query": normalized.get("query", ""),
+                    "cursor": normalized.get("cursor"),
+                    "license_or_terms_note": normalized.get("license_or_terms_note"),
+                    "checksum": normalized.get("checksum"),
+                    "export_status": normalized.get("export_status"),
+                    "metadata_json": normalized.get("metadata_json", {}),
+                },
+            }
+        )
 
     def _upsert_session(self, cursor: Any, session: SessionRecord) -> None:
         cursor.execute(
@@ -1032,5 +1187,122 @@ class PostgresTraceRepository:
                 retention.purge_strategy,
                 json.dumps(retention.redaction_scope),
                 json.dumps(retention.metadata_json),
+            ],
+        )
+
+    def _upsert_research_sync_run(self, cursor: Any, sync_run: ResearchSyncRunRecord) -> None:
+        cursor.execute(
+            """
+            insert into research_sync_runs (
+                id, source_type, query, cursor, status, item_count,
+                started_at, completed_at, metadata_json
+            ) values (
+                %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+            )
+            on conflict (id) do update set
+                source_type = excluded.source_type,
+                query = excluded.query,
+                cursor = excluded.cursor,
+                status = excluded.status,
+                item_count = excluded.item_count,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at,
+                metadata_json = excluded.metadata_json
+            """,
+            [
+                str(sync_run.id),
+                sync_run.source_type,
+                sync_run.query,
+                sync_run.cursor,
+                sync_run.status,
+                sync_run.item_count,
+                sync_run.started_at,
+                sync_run.completed_at,
+                json.dumps(sync_run.metadata_json),
+            ],
+        )
+
+    def _upsert_research_cursor(
+        self,
+        cursor: Any,
+        record: ResearchSyncCursorRecord,
+    ) -> None:
+        cursor.execute(
+            """
+            insert into research_sync_cursors (
+                source_type, cursor_key, cursor_value, updated_at, metadata_json
+            ) values (
+                %s, %s, %s, %s, %s::jsonb
+            )
+            on conflict (source_type, cursor_key) do update set
+                cursor_value = excluded.cursor_value,
+                updated_at = excluded.updated_at,
+                metadata_json = excluded.metadata_json
+            """,
+            [
+                record.source_type,
+                record.cursor_key,
+                record.cursor_value,
+                record.updated_at,
+                json.dumps(record.metadata_json),
+            ],
+        )
+
+    def _upsert_research_document(
+        self,
+        cursor: Any,
+        item: ResearchDocumentRecord,
+        sync_run_id: UUID,
+    ) -> None:
+        cursor.execute(
+            """
+            insert into research_documents (
+                id, source_type, source_id, source_uri, title, summary, authors,
+                published_at, mime_type, content_ref, tags, retrieved_at, query, cursor,
+                license_or_terms_note, checksum, export_status, sync_run_id, metadata_json
+            ) values (
+                %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s::jsonb, %s, %s, %s,
+                %s, %s, %s, %s::uuid, %s::jsonb
+            )
+            on conflict (id) do update set
+                source_type = excluded.source_type,
+                source_id = excluded.source_id,
+                source_uri = excluded.source_uri,
+                title = excluded.title,
+                summary = excluded.summary,
+                authors = excluded.authors,
+                published_at = excluded.published_at,
+                mime_type = excluded.mime_type,
+                content_ref = excluded.content_ref,
+                tags = excluded.tags,
+                retrieved_at = excluded.retrieved_at,
+                query = excluded.query,
+                cursor = excluded.cursor,
+                license_or_terms_note = excluded.license_or_terms_note,
+                checksum = excluded.checksum,
+                export_status = excluded.export_status,
+                sync_run_id = excluded.sync_run_id,
+                metadata_json = excluded.metadata_json
+            """,
+            [
+                item.id,
+                item.provenance.source_type,
+                item.provenance.source_id,
+                item.provenance.source_uri,
+                item.title,
+                item.summary,
+                json.dumps(item.authors),
+                item.published_at,
+                item.mime_type,
+                item.content_ref,
+                json.dumps(item.tags),
+                item.provenance.retrieved_at,
+                item.provenance.query,
+                item.provenance.cursor,
+                item.provenance.license_or_terms_note,
+                item.provenance.checksum,
+                item.provenance.export_status,
+                str(sync_run_id),
+                json.dumps(item.provenance.metadata_json),
             ],
         )

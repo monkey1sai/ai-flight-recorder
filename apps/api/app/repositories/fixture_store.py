@@ -14,6 +14,12 @@ from packages.schema.flight_recorder_schema import (
     IngestReceipt,
     PlanVersionRecord,
     ReplayFrameView,
+    ResearchCorpusView,
+    ResearchDocumentRecord,
+    ResearchSearchResponse,
+    ResearchSyncCursorRecord,
+    ResearchSyncReceipt,
+    ResearchSyncRunRecord,
     RetentionPolicyRecord,
     StateDiffEntryView,
     StateSnapshotRecord,
@@ -56,6 +62,9 @@ class FixtureTraceRepository:
         self._audit_events = {event.id: event for event in seed.audit_events}
         self._policies = {policy.id: policy for policy in seed.policies}
         self._retention = {policy.id: policy for policy in seed.retention}
+        self._research_documents: dict[str, ResearchDocumentRecord] = {}
+        self._research_sync_runs: dict[UUID, ResearchSyncRunRecord] = {}
+        self._research_cursors: dict[tuple[str, str], ResearchSyncCursorRecord] = {}
 
     @classmethod
     def seeded(cls) -> "FixtureTraceRepository":
@@ -206,6 +215,96 @@ class FixtureTraceRepository:
             [item for item in self._state_snapshots.values() if item.trace_id == trace_id],
             key=lambda item: item.snapshot_index,
         )
+
+    def upsert_research_documents(
+        self,
+        source_type: str,
+        response: ResearchSearchResponse,
+        cursor: str | None = None,
+        metadata_json: dict[str, object] | None = None,
+    ) -> ResearchSyncReceipt:
+        sync_run = ResearchSyncRunRecord(
+            id=uuid4(),
+            source_type=source_type,
+            query=response.query,
+            cursor=cursor,
+            status="completed",
+            item_count=len(response.items),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+            metadata_json=metadata_json or {},
+        )
+        self._research_sync_runs[sync_run.id] = sync_run
+
+        upserted_count = 0
+        for item in response.items:
+            cloned = item.model_copy(
+                update={
+                    "provenance": item.provenance.model_copy(
+                        update={
+                            "query": response.query,
+                            "cursor": cursor,
+                        }
+                    )
+                }
+            )
+            self._research_documents[item.id] = cloned
+            upserted_count += 1
+
+        if cursor is not None:
+            self._research_cursors[(source_type, "default")] = ResearchSyncCursorRecord(
+                source_type=source_type,
+                cursor_key="default",
+                cursor_value=cursor,
+                updated_at=datetime.now(UTC),
+                metadata_json=metadata_json or {},
+            )
+
+        return ResearchSyncReceipt(
+            sync_run_id=sync_run.id,
+            source_type=source_type,
+            query=response.query,
+            cursor=cursor,
+            item_count=len(response.items),
+            upserted_count=upserted_count,
+        )
+
+    def list_research_documents(
+        self,
+        source_type: str | None = None,
+        query: str = "",
+    ) -> ResearchCorpusView:
+        tokens = [token.strip().lower() for token in query.split() if token.strip()]
+        items = list(self._research_documents.values())
+        if source_type is not None:
+            items = [item for item in items if item.provenance.source_type == source_type]
+        if tokens:
+            items = [
+                item
+                for item in items
+                if all(
+                    token in " ".join([item.title, item.summary, *item.tags]).lower()
+                    for token in tokens
+                )
+            ]
+        items = sorted(items, key=lambda item: item.provenance.retrieved_at, reverse=True)
+        return ResearchCorpusView(query=query, source_type=source_type, items=items)
+
+    def list_research_sync_runs(
+        self,
+        source_type: str | None = None,
+    ) -> list[ResearchSyncRunRecord]:
+        runs = list(self._research_sync_runs.values())
+        if source_type is not None:
+            runs = [run for run in runs if run.source_type == source_type]
+        return sorted(runs, key=lambda item: item.started_at, reverse=True)
+
+    def get_research_cursor(
+        self,
+        source_type: str,
+        cursor_key: str = "default",
+    ) -> ResearchSyncCursorRecord | None:
+        return self._research_cursors.get((source_type, cursor_key))
 
     def list_audit_events(self, trace_id: UUID | None = None) -> list[AuditEventRecord]:
         events = list(self._audit_events.values())

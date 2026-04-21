@@ -156,4 +156,8 @@ def _migration_already_materialized(
         return repository.table_exists("tasks") and repository.table_exists(
             "state_snapshots"
         )
+    if migration_name == "0004_research_ingestion_surfaces.up.sql":
+        return repository.table_exists("research_documents") and repository.table_exists(
+            "research_sync_runs"
+        )
     return False

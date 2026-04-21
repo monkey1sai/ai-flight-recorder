@@ -204,8 +204,10 @@ export interface ResearchSourceRecord {
   source_uri: string;
   retrieved_at: string;
   query: string;
+  cursor?: string;
   license_or_terms_note?: string;
   checksum?: string;
+  export_status?: string;
   metadata_json?: Record<string, unknown>;
 }
 
@@ -224,6 +226,18 @@ export interface ResearchDocumentRecord {
 export interface ResearchSearchResult {
   query: string;
   items: ResearchDocumentRecord[];
+}
+
+export interface ResearchSyncRunRecord {
+  id: string;
+  source_type: string;
+  query: string;
+  cursor?: string;
+  status: string;
+  item_count: number;
+  started_at: string;
+  completed_at?: string;
+  metadata_json?: Record<string, unknown>;
 }
 
 export interface TraceSummary {
@@ -416,6 +430,36 @@ export const researchCatalog = {
   drive: driveSearch,
   arxiv: arxivSearch,
 };
+export const researchCorpus: ResearchSearchResult = {
+  query: "",
+  items: [...driveSearch.items, ...arxivSearch.items].sort((left, right) =>
+    right.provenance.retrieved_at.localeCompare(left.provenance.retrieved_at),
+  ),
+};
+export const researchSyncRuns: ResearchSyncRunRecord[] = [
+  {
+    id: "sync-drive-fixture",
+    source_type: "drive",
+    query: driveSearch.query,
+    cursor: `drive-fixture:${driveSearch.query}:${driveSearch.items.length}`,
+    status: "completed",
+    item_count: driveSearch.items.length,
+    started_at: driveSearch.items[0]?.provenance.retrieved_at ?? new Date().toISOString(),
+    completed_at: driveSearch.items[0]?.provenance.retrieved_at ?? new Date().toISOString(),
+    metadata_json: { connector_mode: "fixture", export_format: "google-docs-json" },
+  },
+  {
+    id: "sync-arxiv-fixture",
+    source_type: "arxiv",
+    query: arxivSearch.query,
+    cursor: `oai-fixture:${arxivSearch.query}:${arxivSearch.items.length}`,
+    status: "completed",
+    item_count: arxivSearch.items.length,
+    started_at: arxivSearch.items[0]?.provenance.retrieved_at ?? new Date().toISOString(),
+    completed_at: arxivSearch.items[0]?.provenance.retrieved_at ?? new Date().toISOString(),
+    metadata_json: { connector_mode: "fixture", harvest_mode: "metadata_only" },
+  },
+];
 export const demoTraceBundle = traceBundle;
 
 export function getTraceBundleById(traceId: string): TraceBundle | undefined {
