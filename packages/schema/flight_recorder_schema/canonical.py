@@ -33,6 +33,14 @@ class StepStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+class TaskStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class EvidenceGrade(StrEnum):
     OBSERVED = "observed"
     SELF_REPORTED = "self_reported"
@@ -90,6 +98,16 @@ class TraceRecord(FlightRecorderBase):
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
+class TaskRecord(FlightRecorderBase):
+    session_id: UUID
+    trace_id: UUID
+    title: str
+    status: TaskStatus = TaskStatus.QUEUED
+    owner: str | None = None
+    summary: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
 class StepRecord(FlightRecorderBase):
     trace_id: UUID
     parent_step_id: UUID | None = None
@@ -127,6 +145,25 @@ class StateDeltaRecord(FlightRecorderBase):
     facet: str
     before_json: dict[str, Any] | None = None
     after_json: dict[str, Any] | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlanVersionRecord(FlightRecorderBase):
+    task_id: UUID
+    trace_id: UUID
+    step_id: UUID | None = None
+    revision: int = Field(ge=0)
+    summary: str | None = None
+    plan_json: dict[str, Any] = Field(default_factory=dict)
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class StateSnapshotRecord(FlightRecorderBase):
+    trace_id: UUID
+    step_id: UUID | None = None
+    task_id: UUID | None = None
+    snapshot_index: int = Field(ge=0)
+    state_json: dict[str, Any] = Field(default_factory=dict)
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -177,4 +214,3 @@ class InterventionRecord(FlightRecorderBase):
     actor: str
     result: str
     metadata_json: dict[str, Any] = Field(default_factory=dict)
-

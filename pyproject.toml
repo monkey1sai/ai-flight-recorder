@@ -5,6 +5,7 @@ description = "Bootstrap skeleton for the AERIS Flight Recorder observability pl
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115,<1.0",
+    "pg8000>=1.31.5",
     "pydantic>=2.12,<3.0",
 ]
 

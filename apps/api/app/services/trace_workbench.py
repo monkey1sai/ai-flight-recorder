@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from apps.api.app.repositories import FixtureTraceRepository
+from apps.api.app.bootstrap import materialize_raw_artifacts
+from apps.api.app.repositories import TraceRepository
+from apps.api.app.storage import LocalBlobStore
+from apps.api.app.why import ensure_why_records
 from packages.schema.flight_recorder_schema import (
     ClaimEvidenceFlowView,
     IngestReceipt,
+    NormalizedTraceBundleIngestRequest,
+    PlanVersionRecord,
     StateDiffEntryView,
+    TaskStateView,
     TimelineEntryView,
     TraceBundleView,
     TraceSummaryView,
@@ -14,10 +20,16 @@ from packages.schema.flight_recorder_schema import (
 
 
 class TraceWorkbenchService:
-    def __init__(self, repository: FixtureTraceRepository) -> None:
+    def __init__(self, repository: TraceRepository, blob_store: LocalBlobStore) -> None:
         self.repository = repository
+        self.blob_store = blob_store
 
     def ingest(self, bundle: TraceBundleView) -> IngestReceipt:
+        return self.repository.upsert_bundle(bundle)
+
+    def ingest_normalized(self, request: NormalizedTraceBundleIngestRequest) -> IngestReceipt:
+        bundle = materialize_raw_artifacts(request, self.blob_store)
+        bundle = ensure_why_records(bundle, request.raw_artifacts)
         return self.repository.upsert_bundle(bundle)
 
     def list_traces(self) -> list[TraceSummaryView]:
@@ -70,3 +82,27 @@ class TraceWorkbenchService:
                 metadata_json={"claims": len(claim_flow)},
             )
         return claim_flow
+
+    def get_task_state(self, trace_id: UUID) -> TaskStateView | None:
+        task_state = self.repository.get_task_state(trace_id)
+        if task_state is not None:
+            self.repository.record_audit_event(
+                trace_id=trace_id,
+                event_type="query.task_state",
+                actor="api",
+                outcome="served",
+                metadata_json={"task_id": str(task_state.task.id)},
+            )
+        return task_state
+
+    def get_plan_history(self, trace_id: UUID) -> list[PlanVersionRecord]:
+        plan_history = self.repository.list_plan_versions(trace_id)
+        if plan_history:
+            self.repository.record_audit_event(
+                trace_id=trace_id,
+                event_type="query.plan_history",
+                actor="api",
+                outcome="served",
+                metadata_json={"revisions": len(plan_history)},
+            )
+        return plan_history

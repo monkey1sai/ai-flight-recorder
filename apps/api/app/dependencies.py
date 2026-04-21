@@ -3,23 +3,43 @@ from __future__ import annotations
 from functools import lru_cache
 
 from apps.api.app.connectors import FixtureArxivConnector, FixtureDriveConnector
-from apps.api.app.repositories import FixtureTraceRepository
+from apps.api.app.repositories import (
+    FixtureTraceRepository,
+    PostgresTraceRepository,
+    TraceRepository,
+)
 from apps.api.app.services import (
     GovernanceService,
     ReplayService,
     ResearchService,
     TraceWorkbenchService,
 )
+from apps.api.app.settings import get_settings
+from apps.api.app.storage import LocalBlobStore
 
 
 @lru_cache
-def get_repository() -> FixtureTraceRepository:
+def get_repository() -> TraceRepository:
+    settings = get_settings()
+    if settings.repository_backend in {"postgres", "auto"}:
+        try:
+            repository = PostgresTraceRepository(settings.database_url)
+            repository.ping()
+            return repository
+        except Exception:
+            if settings.repository_backend == "postgres":
+                raise
     return FixtureTraceRepository.seeded()
 
 
 @lru_cache
+def get_blob_store() -> LocalBlobStore:
+    return LocalBlobStore(get_settings().blob_storage_root)
+
+
+@lru_cache
 def get_trace_workbench_service() -> TraceWorkbenchService:
-    return TraceWorkbenchService(get_repository())
+    return TraceWorkbenchService(get_repository(), get_blob_store())
 
 
 @lru_cache
