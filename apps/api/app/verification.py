@@ -44,7 +44,11 @@ def derive_replay_verification(bundle: TraceBundleView) -> ReplayVerificationVie
                     else "verified_without_replay_ref",
                     method=explanation.method,
                     summary=explanation.summary,
-                    confidence=explanation.confidence or claim.confidence,
+                    confidence=(
+                        explanation.confidence
+                        if explanation.confidence is not None
+                        else claim.confidence
+                    ),
                     replay_trace_id=replay_trace_id,
                     supporting_edge_ids=list(explanation.supporting_edge_ids),
                     metadata_json={
@@ -55,21 +59,31 @@ def derive_replay_verification(bundle: TraceBundleView) -> ReplayVerificationVie
                 )
             )
 
-    verified_claim_ids = {record.claim_id for record in records}
-    methods = sorted({record.method for record in records}) if records else ["no_replay_evidence"]
-    run = ReplayRunRecord(
-        id=_stable_uuid("replay-run", bundle.trace.id),
-        trace_id=bundle.trace.id,
-        status="completed",
-        method=methods[0] if len(methods) == 1 else "mixed",
-        frame_count=len(bundle.steps),
-        verified_claim_count=len(verified_claim_ids),
-        started_at=_bundle_started_at(bundle),
-        completed_at=_bundle_completed_at(bundle),
-        metadata_json={
-            "derived_from": "verified_explanations",
-            "replay_trace_ids": [str(item) for item in sorted(replay_trace_ids, key=str)],
-        },
+    replay_backed_records = [
+        record for record in records if record.replay_trace_id is not None
+    ]
+    methods = (
+        sorted({record.method for record in replay_backed_records})
+        if replay_backed_records
+        else []
+    )
+    run = (
+        ReplayRunRecord(
+            id=_stable_uuid("replay-run", bundle.trace.id),
+            trace_id=bundle.trace.id,
+            status="completed",
+            method=methods[0] if len(methods) == 1 else "mixed",
+            frame_count=len(bundle.steps),
+            verified_claim_count=len({record.claim_id for record in replay_backed_records}),
+            started_at=_bundle_started_at(bundle),
+            completed_at=_bundle_completed_at(bundle),
+            metadata_json={
+                "derived_from": "verified_explanations",
+                "replay_trace_ids": [str(item) for item in sorted(replay_trace_ids, key=str)],
+            },
+        )
+        if replay_backed_records
+        else None
     )
     return summarize_replay_verification(
         trace_id=bundle.trace.id,
@@ -96,11 +110,17 @@ def summarize_replay_verification(
     confidence_candidates = [
         record.confidence for record in sorted_records if record.confidence is not None
     ]
+    if replay_trace_ids:
+        verification_badge = "replay_verified"
+    elif sorted_records:
+        verification_badge = "verified_without_replay_ref"
+    else:
+        verification_badge = "no_replay_evidence"
     return ReplayVerificationView(
         trace_id=trace_id,
         claim_count=claim_count,
         verified_claim_count=len({record.claim_id for record in sorted_records}),
-        verification_badge="replay_verified" if sorted_records else "no_replay_evidence",
+        verification_badge=verification_badge,
         confidence=max(confidence_candidates) if confidence_candidates else None,
         replay_trace_ids=replay_trace_ids,
         replay_run=replay_run,
