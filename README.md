@@ -4,22 +4,27 @@ Monorepo bootstrap for an **AI / Agent / LLM observability platform** focused on
 
 ## Current state
 
-This repository is no longer just a docs kit. It now contains the first bootstrap skeleton aligned to `COMPLETE_CODEX_PROJECT_GUIDE_zh-TW.md`:
+This repository now contains a runnable local MVP baseline aligned to
+`COMPLETE_CODEX_PROJECT_GUIDE_zh-TW.md`:
 
 - `apps/api`
-  Minimal FastAPI surface with `/healthz` and bootstrap metadata.
+  FastAPI surfaces for ingest, query, replay, research, and governance, with
+  repository auto-selection between fixture mode and live Postgres mode.
 - `apps/web`
-  Next.js App Router shell that makes the evidence-grade contract visible from day one.
+  Next.js App Router pages that prefer live API reads and fall back to fixture data
+  when the API is unavailable.
 - `packages/schema`
-  Typed Python boundary for evidence grades plus the first canonical Postgres migration pair.
-- `workers/*`
-  Reserved locations for ingest, Drive sync, arXiv sync, and replay workers.
-- `tests/*`
-  Unit, integration, and smoke tests that verify the first runnable slice and repo contract.
-- `plans/active/20260417-bootstrap-monorepo.md`
-  The active ExecPlan that defines the current bootstrap milestone.
-- `plans/active/20260417-canonical-schema-migrations.md`
-  The schema/migration ExecPlan for the first Postgres canonical model slice.
+  Canonical schema models plus the first three Postgres migration slices:
+  core observability entities, governance surfaces, and cognitive-state surfaces.
+- `packages/edge_sdk`
+  Minimal Python edge/emitter SDK for the normalized ingest demo path.
+- `scripts/bootstrap_local.py`
+  Applies migrations and seeds demo data into a local Postgres instance.
+- `scripts/emit_demo_trace.py`
+  Posts a demo normalized trace bundle into the ingest API.
+- `infra/compose/docker-compose.yml`
+  Local single-machine baseline for `api`, `web`, `postgres`, `redis`, `minio`,
+  `otel-collector`, and `edge-daemon`.
 
 ## System of record
 
@@ -83,12 +88,46 @@ npm run lint --workspace @aeris/web
 npm run typecheck --workspace @aeris/web
 ```
 
-## Immediate next milestones
+## Local MVP bring-up
 
-1. Build the canonical observability schema beyond the bootstrap envelope.
-2. Implement the ingestion API with persistence.
-3. Replace the web shell placeholders with timeline, run detail, and evidence panel slices.
-4. Add Google Drive and arXiv connectors with provenance retention.
+When `make` is not available, run the underlying commands directly.
+
+1. Install local dependencies.
+
+```bash
+uv sync --group dev
+npm install --workspaces --include-workspace-root
+```
+
+2. Validate the compose baseline.
+
+```bash
+docker-compose -f infra/compose/docker-compose.yml config
+```
+
+3. Start the local stack.
+
+```bash
+docker-compose -f infra/compose/docker-compose.yml up --build
+```
+
+The `api` container is configured with:
+
+- `AERIS_AUTO_BOOTSTRAP=true`
+- `AERIS_SEED_DEMO=true`
+- `AERIS_REPOSITORY_BACKEND=postgres`
+
+So it will wait for Postgres, apply migrations, materialize demo blob artifacts, and
+seed the demo trace during startup.
+
+4. Optional local commands outside Docker.
+
+```bash
+uv run python scripts/bootstrap_local.py
+uv run python scripts/emit_demo_trace.py
+```
+
+These commands require a reachable Postgres instance on `DATABASE_URL`.
 
 ## Migrations
 
@@ -97,7 +136,7 @@ The first Postgres canonical migration lives in:
 - `packages/schema/migrations/0001_canonical_schema.up.sql`
 - `packages/schema/migrations/0001_canonical_schema.down.sql`
 
-This migration covers:
+These migrations cover:
 
 - `sessions`
 - `traces`
@@ -110,8 +149,24 @@ This migration covers:
 - `explanation_records`
 - `evaluations`
 - `interventions`
+- `audit_events`
+- `policy_rules`
+- `retention_policies`
 
-It intentionally does not yet include `spans`, `tasks`, `plan_versions`, or research-ingestion tables.
+They intentionally do not yet include `spans` or research-ingestion tables.
+
+The current migration slices are:
+
+- `packages/schema/migrations/0001_canonical_schema.up.sql`
+- `packages/schema/migrations/0002_governance_surfaces.up.sql`
+- `packages/schema/migrations/0003_cognitive_state_surfaces.up.sql`
+
+`0003_cognitive_state_surfaces` adds:
+
+- `tasks`
+- `plan_versions`
+- `state_snapshots`
+- `traces.task_id` foreign key wiring
 
 ## Notes
 

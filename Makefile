@@ -1,4 +1,4 @@
-.PHONY: setup lint typecheck unit integration e2e smoke test validate
+.PHONY: setup lint typecheck unit integration e2e smoke test test validate bootstrap-local emit-demo
 
 setup:
 	uv sync --group dev
@@ -28,3 +28,9 @@ smoke:
 test: unit integration e2e smoke
 
 validate: lint typecheck test
+
+bootstrap-local:
+	uv run python scripts/bootstrap_local.py
+
+emit-demo:
+	uv run python scripts/emit_demo_trace.py

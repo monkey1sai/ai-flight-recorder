@@ -8,7 +8,8 @@ COPY pyproject.toml README.md ./
 COPY apps ./apps
 COPY packages ./packages
 COPY workers ./workers
+COPY scripts ./scripts
 
-RUN pip install --no-cache-dir fastapi pydantic uvicorn
+RUN pip install --no-cache-dir fastapi pydantic uvicorn pg8000 httpx
 
-CMD ["python", "-m", "uvicorn", "apps.api.app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "scripts/run_api.py"]
