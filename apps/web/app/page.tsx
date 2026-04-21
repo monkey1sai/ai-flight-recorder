@@ -1,9 +1,23 @@
 import Link from "next/link";
 
-import { claimFlows, governanceSnapshot, researchCatalog, timelineEntries, traceSummaries } from "../lib/mock-data";
+import type { ClaimFlow, TimelineEntry } from "../lib/mock-data";
+import {
+  getClaimFlows,
+  getGovernanceSnapshot,
+  getResearchCatalog,
+  getTimelineEntries,
+  listTraceSummaries,
+} from "../lib/api";
 
-export default function Home() {
+export default async function Home() {
+  const traceSummaries = await listTraceSummaries();
   const summary = traceSummaries[0];
+  const [researchCatalog, governanceSnapshot, timelineEntries, claimFlows] = await Promise.all([
+    getResearchCatalog(),
+    getGovernanceSnapshot(summary?.traceId),
+    summary ? getTimelineEntries(summary.traceId) : Promise.resolve<TimelineEntry[]>([]),
+    summary ? getClaimFlows(summary.traceId) : Promise.resolve<ClaimFlow[]>([]),
+  ]);
 
   return (
     <main className="page-shell">
@@ -22,7 +36,7 @@ export default function Home() {
           </Link>
           <Link
             className="action-pill secondary"
-            href="/traces/22222222-2222-4222-8222-222222222222"
+            href={summary ? `/traces/${summary.traceId}` : "/timeline"}
           >
             Inspect trace
           </Link>
@@ -30,7 +44,7 @@ export default function Home() {
         <div className="hero-grid">
           <div className="hero-card">
             <strong>Trace</strong>
-            <span>{summary.stepCount} steps with {summary.claimCount} claims and {summary.policyFlags} policy flags.</span>
+            <span>{summary?.stepCount ?? 0} steps with {summary?.claimCount ?? 0} claims and {summary?.policyFlags ?? 0} policy flags.</span>
           </div>
           <div className="hero-card">
             <strong>Research</strong>

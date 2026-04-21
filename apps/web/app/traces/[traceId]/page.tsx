@@ -4,32 +4,38 @@ import { StateDiffPanel } from "../../../components/state-diff-panel";
 import { TraceTimeline } from "../../../components/trace-timeline";
 import { WhyPanel } from "../../../components/why-panel";
 import {
-  claimFlows,
-  getTraceBundleById,
-  stateDiffs,
-  timelineEntries,
-} from "../../../lib/mock-data";
+  getClaimFlows,
+  getStateDiffEntries,
+  getTimelineEntries,
+  getTraceBundle,
+} from "../../../lib/api";
 
-export default function TraceDetailPage({
+export default async function TraceDetailPage({
   params,
 }: {
-  params: { traceId: string };
+  params: Promise<{ traceId: string }>;
 }) {
-  const { traceId } = params;
-  const bundle = getTraceBundleById(traceId);
+  const { traceId } = await params;
+  const bundle = await getTraceBundle(traceId);
 
   if (!bundle) {
     notFound();
   }
+
+  const [timelineEntries, stateDiffs, claimFlows] = await Promise.all([
+    getTimelineEntries(traceId),
+    getStateDiffEntries(traceId),
+    getClaimFlows(traceId),
+  ]);
 
   return (
     <main className="page-shell stack-page">
       <section className="section-copy">
         <h1>Trace Detail</h1>
         <p>
-          Trace `{bundle.trace.id}` captures the operator slice end-to-end: plan update, Drive
-          search, arXiv search, and response synthesis. This page mirrors the API detail,
-          state-diff, and claim-evidence surfaces.
+          Trace `{bundle.trace.id}` captures the operator slice end-to-end: timeline, state change,
+          claim/evidence linkage, and final synthesis. This page reads live API detail, state-diff,
+          and claim-evidence surfaces first, with fixture fallback for local browsing.
         </p>
       </section>
       <section className="stack-section">
