@@ -221,9 +221,7 @@ class FixtureTraceRepository:
             ],
             key=lambda item: (item.claim_text, item.created_at, str(item.id)),
         )
-        if replay_run is None and not records:
-            return self.refresh_replay_verification(trace_id)
-        return summarize_replay_verification(
+        return self._materialize_replay_verification_view(
             trace_id=trace_id,
             claim_count=len(bundle.claims),
             replay_run=replay_run,
@@ -236,7 +234,21 @@ class FixtureTraceRepository:
             return None
         view = derive_replay_verification(bundle)
         self._replace_replay_verification(trace_id, view)
-        return self.get_replay_verification(trace_id)
+        replay_run = self._replay_runs.get(trace_id)
+        records = sorted(
+            [
+                record
+                for record in self._verification_records.values()
+                if record.trace_id == trace_id
+            ],
+            key=lambda item: (item.claim_text, item.created_at, str(item.id)),
+        )
+        return self._materialize_replay_verification_view(
+            trace_id=trace_id,
+            claim_count=len(bundle.claims),
+            replay_run=replay_run,
+            records=records,
+        )
 
     def get_task_state(self, trace_id: UUID) -> TaskStateView | None:
         bundle = self.get_trace_bundle(trace_id)
@@ -483,8 +495,28 @@ class FixtureTraceRepository:
             del self._verification_records[record_id]
         if view.replay_run is not None:
             self._replay_runs[trace_id] = view.replay_run
+        else:
+            self._replay_runs.pop(trace_id, None)
         for record in view.verification_records:
             replay_run_id = view.replay_run.id if view.replay_run is not None else None
             self._verification_records[record.id] = record.model_copy(
                 update={"replay_run_id": replay_run_id}
             )
+
+    def _materialize_replay_verification_view(
+        self,
+        trace_id: UUID,
+        claim_count: int,
+        replay_run: ReplayRunRecord | None,
+        records: list[VerificationRecord],
+    ) -> ReplayVerificationView:
+        replay_run_id = replay_run.id if replay_run is not None else None
+        return summarize_replay_verification(
+            trace_id=trace_id,
+            claim_count=claim_count,
+            replay_run=replay_run,
+            records=[
+                record.model_copy(update={"replay_run_id": replay_run_id})
+                for record in records
+            ],
+        )

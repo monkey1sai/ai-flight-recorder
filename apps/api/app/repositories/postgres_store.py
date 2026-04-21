@@ -451,12 +451,11 @@ class PostgresTraceRepository:
             [str(trace_id)],
             empty_on=[],
         )
-        if replay_run is None and not records:
-            return self.refresh_replay_verification(trace_id)
-        return summarize_replay_verification(
+        replay_run_record = self._model(ReplayRunRecord, replay_run) if replay_run else None
+        return self._materialize_replay_verification_view(
             trace_id=trace_id,
             claim_count=len(bundle.claims),
-            replay_run=self._model(ReplayRunRecord, replay_run) if replay_run else None,
+            replay_run=replay_run_record,
             records=records,
         )
 
@@ -468,7 +467,19 @@ class PostgresTraceRepository:
         with self._connect() as connection:
             cursor = connection.cursor()
             self._replace_replay_verification(cursor, view)
-        return self.get_replay_verification(trace_id)
+        replay_run = view.replay_run
+        records = [
+            record.model_copy(
+                update={"replay_run_id": replay_run.id if replay_run is not None else None}
+            )
+            for record in view.verification_records
+        ]
+        return self._materialize_replay_verification_view(
+            trace_id=trace_id,
+            claim_count=len(bundle.claims),
+            replay_run=replay_run,
+            records=records,
+        )
 
     def get_task_state(self, trace_id: UUID) -> TaskStateView | None:
         bundle = self.get_trace_bundle(trace_id)
@@ -1466,3 +1477,21 @@ class PostgresTraceRepository:
                 cursor,
                 record.model_copy(update={"replay_run_id": replay_run_id}),
             )
+
+    def _materialize_replay_verification_view(
+        self,
+        trace_id: UUID,
+        claim_count: int,
+        replay_run: ReplayRunRecord | None,
+        records: list[VerificationRecord],
+    ) -> ReplayVerificationView:
+        replay_run_id = replay_run.id if replay_run is not None else None
+        return summarize_replay_verification(
+            trace_id=trace_id,
+            claim_count=claim_count,
+            replay_run=replay_run,
+            records=[
+                record.model_copy(update={"replay_run_id": replay_run_id})
+                for record in records
+            ],
+        )

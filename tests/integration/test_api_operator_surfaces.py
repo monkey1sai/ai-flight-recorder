@@ -230,12 +230,16 @@ def test_normalized_ingest_derives_unsupported_why_records_when_claims_absent(
         json=request.model_dump(mode="json"),
     )
     claim_response = client.get(f"/api/v1/traces/{trace_id}/claim-evidence")
+    replay_verification_response = client.get(f"/api/v1/replay/{trace_id}/verification")
 
     assert response.status_code == 200
     assert claim_response.status_code == 200
+    assert replay_verification_response.status_code == 200
     assert len(claim_response.json()) >= 1
     assert claim_response.json()[0]["verification_status"] == "unsupported"
     assert claim_response.json()[0]["explanations"][0]["grade"] == "self_reported"
+    assert replay_verification_response.json()["verification_badge"] == "no_replay_evidence"
+    assert replay_verification_response.json()["replay_run"] is None
 
     _clear_dependency_caches()
 
