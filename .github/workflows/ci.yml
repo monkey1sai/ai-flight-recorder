@@ -105,11 +105,21 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --group dev
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Node dependencies for Python typecheck
+        run: npm ci --workspaces --include-workspace-root
+
       - name: Ruff
         run: uv run ruff check .
 
-      - name: Mypy
-        run: uv run mypy apps packages workers tests
+      - name: Python typecheck
+        run: node ./node_modules/pyright/index.js -p pyrightconfig.json --level error apps packages workers tests
 
       - name: Unit tests
         run: uv run python -m pytest tests/unit -q -p no:cacheprovider

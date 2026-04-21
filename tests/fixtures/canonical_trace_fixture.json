@@ -1,0 +1,40 @@
+{
+  "session": {
+    "id": "4af3a403-7e7c-48a7-b9f0-0b519d95f48f",
+    "source": "codex",
+    "user_id": "demo-user",
+    "started_at": "2026-04-17T11:00:00Z",
+    "status": "running"
+  },
+  "trace": {
+    "id": "7d8f4856-bec4-4e33-884f-e5d4d3a93454",
+    "session_id": "4af3a403-7e7c-48a7-b9f0-0b519d95f48f",
+    "trace_kind": "agent_run",
+    "started_at": "2026-04-17T11:00:01Z",
+    "status": "running"
+  },
+  "step": {
+    "id": "ccbf7c5c-9d8c-457d-ac17-e2800a742cb9",
+    "trace_id": "7d8f4856-bec4-4e33-884f-e5d4d3a93454",
+    "step_index": 0,
+    "step_type": "tool_call",
+    "actor": "agent",
+    "started_at": "2026-04-17T11:00:02Z",
+    "status": "completed"
+  },
+  "artifact": {
+    "id": "3d2dbd39-fdb7-4cc6-93d8-1ece5c7e6d26",
+    "source_type": "tool_result",
+    "source_uri": "tool://search/results/1",
+    "storage_ref": "s3://bucket/tool-results/1.json"
+  },
+  "claim": {
+    "id": "d9a1ed0f-28c1-4edb-8ba2-939fd9ed6628",
+    "trace_id": "7d8f4856-bec4-4e33-884f-e5d4d3a93454",
+    "claim_text": "The tool result supported the final answer.",
+    "claim_type": "factual",
+    "position_index": 0,
+    "verification_status": "supported"
+  }
+}
+

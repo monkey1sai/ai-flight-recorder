@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aeris-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aeris-web
+  template:
+    metadata:
+      labels:
+        app: aeris-web
+    spec:
+      containers:
+        - name: web
+          image: aeris/web:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_BASE_URL
+              value: http://aeris-api:8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aeris-web
+spec:
+  selector:
+    app: aeris-web
+  ports:
+    - port: 3000
+      targetPort: 3000

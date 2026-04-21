@@ -1,0 +1,18 @@
+[project]
+name = "mypy"
+version = "1.19.1"
+description = "Offline mypy-compatible wrapper backed by Pyright for bootstrap validation."
+requires-python = ">=3.12"
+
+[project.scripts]
+mypy = "mypy_compat:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

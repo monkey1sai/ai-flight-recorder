@@ -1,0 +1,7 @@
+[package]
+name = "aeris-edge-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "Edge-side spool, policy, and export skeleton for AERIS Flight Recorder."
+
+[dependencies]
