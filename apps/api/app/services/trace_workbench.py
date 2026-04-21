@@ -20,7 +20,11 @@ from packages.schema.flight_recorder_schema import (
 
 
 class TraceWorkbenchService:
-    def __init__(self, repository: TraceRepository, blob_store: LocalBlobStore) -> None:
+    def __init__(
+        self,
+        repository: TraceRepository,
+        blob_store: LocalBlobStore | None = None,
+    ) -> None:
         self.repository = repository
         self.blob_store = blob_store
 
@@ -28,6 +32,8 @@ class TraceWorkbenchService:
         return self.repository.upsert_bundle(bundle)
 
     def ingest_normalized(self, request: NormalizedTraceBundleIngestRequest) -> IngestReceipt:
+        if self.blob_store is None:
+            raise RuntimeError("blob_store is required for normalized ingest")
         bundle = materialize_raw_artifacts(request, self.blob_store)
         bundle = ensure_why_records(bundle, request.raw_artifacts)
         return self.repository.upsert_bundle(bundle)

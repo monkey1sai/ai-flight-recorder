@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from apps.api.app.repositories import FixtureTraceRepository
+from apps.api.app.repositories import TraceRepository
 from packages.schema.flight_recorder_schema import GovernanceSnapshotView
 
 
 class GovernanceService:
-    def __init__(self, repository: FixtureTraceRepository) -> None:
+    def __init__(self, repository: TraceRepository) -> None:
         self.repository = repository
 
     def get_snapshot(self, trace_id: UUID | None = None) -> GovernanceSnapshotView:

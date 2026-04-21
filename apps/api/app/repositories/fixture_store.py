@@ -12,9 +12,12 @@ from packages.schema.flight_recorder_schema import (
     EvidenceGrade,
     ExplanationRecord,
     IngestReceipt,
+    PlanVersionRecord,
     ReplayFrameView,
     RetentionPolicyRecord,
     StateDiffEntryView,
+    StateSnapshotRecord,
+    TaskStateView,
     TimelineEntryView,
     TraceBundleView,
     TraceSummaryView,
@@ -309,6 +312,15 @@ class FixtureTraceRepository:
             )
 
         return frames
+
+    def get_task_state(self, trace_id: UUID) -> TaskStateView | None:
+        return None
+
+    def list_plan_versions(self, trace_id: UUID) -> list[PlanVersionRecord]:
+        return []
+
+    def list_state_snapshots(self, trace_id: UUID) -> list[StateSnapshotRecord]:
+        return []
 
     def list_audit_events(self, trace_id: UUID | None = None) -> list[AuditEventRecord]:
         events = list(self._audit_events.values())
