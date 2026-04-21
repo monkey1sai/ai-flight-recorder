@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from apps.api.app.cognitive import build_task_state_view, ensure_cognitive_state
+from apps.api.app.why import ensure_why_records
 from packages.schema.flight_recorder_schema import (
     ArtifactRecord,
     AuditEventRecord,
     ClaimEvidenceFlowView,
-    ClaimVerificationStatus,
     EntityKind,
-    EvidenceGrade,
     ExplanationRecord,
     IngestReceipt,
     PlanVersionRecord,
@@ -24,18 +24,24 @@ from packages.schema.flight_recorder_schema import (
 )
 from packages.testkit import load_trace_bundle_fixture
 
-GRADE_PRIORITY = {
-    EvidenceGrade.SELF_REPORTED: 1,
-    EvidenceGrade.INFERRED: 2,
-    EvidenceGrade.OBSERVED: 3,
-    EvidenceGrade.VERIFIED: 4,
-}
+from .helpers import (
+    build_claim_flows,
+    build_replay,
+    build_state_diffs,
+    build_timeline,
+    build_trace_summaries,
+)
 
 
 class FixtureTraceRepository:
     def __init__(self, seed: TraceBundleView) -> None:
+        seed = ensure_cognitive_state(seed)
+        seed = ensure_why_records(seed)
         self._sessions = {seed.session.id: seed.session}
         self._traces = {seed.trace.id: seed.trace}
+        self._tasks = {task.id: task for task in seed.tasks}
+        self._plan_versions = {plan.id: plan for plan in seed.plan_versions}
+        self._state_snapshots = {snapshot.id: snapshot for snapshot in seed.state_snapshots}
         self._steps = {step.id: step for step in seed.steps}
         self._observations = {observation.id: observation for observation in seed.observations}
         self._state_deltas = {delta.id: delta for delta in seed.state_deltas}
@@ -56,39 +62,11 @@ class FixtureTraceRepository:
         return cls(load_trace_bundle_fixture())
 
     def list_traces(self) -> list[TraceSummaryView]:
-        summaries: list[TraceSummaryView] = []
-
-        for trace in self._traces.values():
-            steps = self._steps_for_trace(trace.id)
-            claims = self._claims_for_trace(trace.id)
-            audit_events = self.list_audit_events(trace.id)
-
-            summaries.append(
-                TraceSummaryView(
-                    trace_id=trace.id,
-                    session_id=trace.session_id,
-                    status=trace.status,
-                    model_name=trace.model_name,
-                    trace_kind=trace.trace_kind,
-                    started_at=trace.started_at,
-                    ended_at=trace.ended_at,
-                    step_count=len(steps),
-                    claim_count=len(claims),
-                    unsupported_claim_count=sum(
-                        1
-                        for claim in claims
-                        if claim.verification_status
-                        in {
-                            ClaimVerificationStatus.UNSUPPORTED,
-                            ClaimVerificationStatus.MODEL_PRIOR_ONLY,
-                            ClaimVerificationStatus.CONFLICTED,
-                        }
-                    ),
-                    latest_audit_outcome=audit_events[-1].outcome if audit_events else None,
-                )
-            )
-
-        return sorted(summaries, key=lambda item: item.started_at)
+        bundles = [self.get_trace_bundle(trace_id) for trace_id in self._traces]
+        return build_trace_summaries(
+            [bundle for bundle in bundles if bundle is not None],
+            {trace_id: self.list_audit_events(trace_id) for trace_id in self._traces},
+        )
 
     def get_trace_bundle(self, trace_id: UUID) -> TraceBundleView | None:
         trace = self._traces.get(trace_id)
@@ -100,6 +78,9 @@ class FixtureTraceRepository:
         return TraceBundleView(
             session=session,
             trace=trace,
+            tasks=self._tasks_for_trace(trace_id),
+            plan_versions=self.list_plan_versions(trace_id),
+            state_snapshots=self.list_state_snapshots(trace_id),
             steps=self._steps_for_trace(trace_id),
             observations=self._observations_for_trace(trace_id),
             state_deltas=self._state_deltas_for_trace(trace_id),
@@ -115,10 +96,15 @@ class FixtureTraceRepository:
         )
 
     def upsert_bundle(self, bundle: TraceBundleView) -> IngestReceipt:
+        bundle = ensure_cognitive_state(bundle)
+        bundle = ensure_why_records(bundle)
         self._sessions[bundle.session.id] = bundle.session
         self._traces[bundle.trace.id] = bundle.trace
 
         for collection, target in [
+            (bundle.tasks, self._tasks),
+            (bundle.plan_versions, self._plan_versions),
+            (bundle.state_snapshots, self._state_snapshots),
             (bundle.steps, self._steps),
             (bundle.observations, self._observations),
             (bundle.state_deltas, self._state_deltas),
@@ -144,6 +130,9 @@ class FixtureTraceRepository:
             outcome="recorded",
             metadata_json={
                 "entity_counts": {
+                    "tasks": len(bundle.tasks),
+                    "plan_versions": len(bundle.plan_versions),
+                    "state_snapshots": len(bundle.state_snapshots),
                     "steps": len(bundle.steps),
                     "observations": len(bundle.observations),
                     "state_deltas": len(bundle.state_deltas),
@@ -160,6 +149,9 @@ class FixtureTraceRepository:
             session_id=bundle.session.id,
             trace_id=bundle.trace.id,
             entity_counts={
+                "tasks": len(bundle.tasks),
+                "plan_versions": len(bundle.plan_versions),
+                "state_snapshots": len(bundle.state_snapshots),
                 "steps": len(bundle.steps),
                 "observations": len(bundle.observations),
                 "state_deltas": len(bundle.state_deltas),
@@ -176,151 +168,44 @@ class FixtureTraceRepository:
         bundle = self.get_trace_bundle(trace_id)
         if bundle is None:
             return []
-
-        timeline: list[TimelineEntryView] = []
-
-        for step in bundle.steps:
-            observations = [item for item in bundle.observations if item.step_id == step.id]
-            claim_ids = self._claim_ids_for_step(bundle, step.id)
-            explanations = [item for item in bundle.explanations if item.claim_id in claim_ids]
-            interventions = [item for item in bundle.interventions if item.step_id == step.id]
-
-            artifact_ids = sorted(
-                {
-                    observation.source_artifact_id
-                    for observation in observations
-                    if observation.source_artifact_id is not None
-                },
-                key=str,
-            )
-
-            evidence_grade = max(
-                (item.grade for item in explanations),
-                key=lambda grade: GRADE_PRIORITY[grade],
-                default=(
-                    EvidenceGrade.OBSERVED
-                    if observations
-                    else EvidenceGrade.INFERRED if interventions else EvidenceGrade.SELF_REPORTED
-                ),
-            )
-
-            timeline.append(
-                TimelineEntryView(
-                    step_id=step.id,
-                    step_index=step.step_index,
-                    step_type=step.step_type,
-                    actor=step.actor,
-                    status=step.status,
-                    summary=step.summary,
-                    started_at=step.started_at,
-                    ended_at=step.ended_at,
-                    evidence_grade=evidence_grade,
-                    observation_count=len(observations),
-                    artifact_ids=artifact_ids,
-                    claim_ids=claim_ids,
-                    intervention_ids=[item.id for item in interventions],
-                )
-            )
-
-        return timeline
+        return build_timeline(bundle)
 
     def build_state_diffs(self, trace_id: UUID) -> list[StateDiffEntryView]:
         bundle = self.get_trace_bundle(trace_id)
         if bundle is None:
             return []
-
-        step_indexes = {step.id: step.step_index for step in bundle.steps}
-
-        return [
-            StateDiffEntryView(
-                step_id=delta.step_id,
-                step_index=step_indexes.get(delta.step_id, -1),
-                facet=delta.facet,
-                before_json=delta.before_json,
-                after_json=delta.after_json,
-                metadata_json=delta.metadata_json,
-            )
-            for delta in bundle.state_deltas
-        ]
+        return build_state_diffs(bundle)
 
     def build_claim_flows(self, trace_id: UUID) -> list[ClaimEvidenceFlowView]:
         bundle = self.get_trace_bundle(trace_id)
         if bundle is None:
             return []
-
-        flows: list[ClaimEvidenceFlowView] = []
-
-        for claim in bundle.claims:
-            edges = [
-                edge
-                for edge in bundle.evidence_edges
-                if edge.from_kind == EntityKind.CLAIM and edge.from_id == claim.id
-            ]
-            artifact_ids = [
-                edge.to_id for edge in edges if edge.to_kind == EntityKind.ARTIFACT
-            ]
-            step_ids = [edge.to_id for edge in edges if edge.to_kind == EntityKind.STEP]
-            artifacts = [
-                artifact for artifact in bundle.artifacts if artifact.id in set(artifact_ids)
-            ]
-            explanations = [
-                explanation
-                for explanation in bundle.explanations
-                if explanation.claim_id == claim.id
-            ]
-            flows.append(
-                ClaimEvidenceFlowView(
-                    claim=claim,
-                    verification_status=claim.verification_status,
-                    explanations=explanations,
-                    supporting_edges=edges,
-                    artifacts=artifacts,
-                    supporting_step_ids=step_ids,
-                )
-            )
-
-        return flows
+        return build_claim_flows(bundle)
 
     def build_replay(self, trace_id: UUID) -> list[ReplayFrameView]:
         bundle = self.get_trace_bundle(trace_id)
         if bundle is None:
             return []
-
-        frames: list[ReplayFrameView] = []
-
-        for index, step in enumerate(bundle.steps):
-            claim_ids = self._claim_ids_for_step(bundle, step.id)
-            frames.append(
-                ReplayFrameView(
-                    frame_index=index,
-                    step=step,
-                    observations=[
-                        observation
-                        for observation in bundle.observations
-                        if observation.step_id == step.id
-                    ],
-                    state_deltas=[
-                        delta for delta in bundle.state_deltas if delta.step_id == step.id
-                    ],
-                    claims=[claim for claim in bundle.claims if claim.id in claim_ids],
-                    interventions=[
-                        intervention
-                        for intervention in bundle.interventions
-                        if intervention.step_id == step.id
-                    ],
-                )
-            )
-
-        return frames
+        return build_replay(bundle)
 
     def get_task_state(self, trace_id: UUID) -> TaskStateView | None:
-        return None
+        bundle = self.get_trace_bundle(trace_id)
+        if bundle is None:
+            return None
+        return build_task_state_view(bundle)
 
     def list_plan_versions(self, trace_id: UUID) -> list[PlanVersionRecord]:
-        return []
+        task_ids = {task.id for task in self._tasks_for_trace(trace_id)}
+        return sorted(
+            [item for item in self._plan_versions.values() if item.task_id in task_ids],
+            key=lambda item: item.revision,
+        )
 
     def list_state_snapshots(self, trace_id: UUID) -> list[StateSnapshotRecord]:
-        return []
+        return sorted(
+            [item for item in self._state_snapshots.values() if item.trace_id == trace_id],
+            key=lambda item: item.snapshot_index,
+        )
 
     def list_audit_events(self, trace_id: UUID | None = None) -> list[AuditEventRecord]:
         events = list(self._audit_events.values())
@@ -358,6 +243,12 @@ class FixtureTraceRepository:
         return sorted(
             [step for step in self._steps.values() if step.trace_id == trace_id],
             key=lambda item: item.step_index,
+        )
+
+    def _tasks_for_trace(self, trace_id: UUID) -> list:
+        return sorted(
+            [task for task in self._tasks.values() if task.trace_id == trace_id],
+            key=lambda item: item.created_at,
         )
 
     def _observations_for_trace(self, trace_id: UUID) -> list:
@@ -437,13 +328,3 @@ class FixtureTraceRepository:
             [artifact for artifact in self._artifacts.values() if artifact.id in artifact_ids],
             key=lambda artifact: artifact.id,
         )
-
-    def _claim_ids_for_step(self, bundle: TraceBundleView, step_id: UUID) -> list[UUID]:
-        claim_ids = {
-            edge.from_id
-            for edge in bundle.evidence_edges
-            if edge.from_kind == EntityKind.CLAIM
-            and edge.to_kind == EntityKind.STEP
-            and edge.to_id == step_id
-        }
-        return sorted(claim_ids, key=str)
