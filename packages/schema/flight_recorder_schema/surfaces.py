@@ -16,10 +16,13 @@ from .canonical import (
     ExplanationRecord,
     InterventionRecord,
     ObservationRecord,
+    PlanVersionRecord,
     SessionRecord,
     StateDeltaRecord,
+    StateSnapshotRecord,
     StepRecord,
     StepStatus,
+    TaskRecord,
     TraceRecord,
     TraceStatus,
 )
@@ -59,6 +62,9 @@ class RetentionPolicyRecord(BaseModel):
 class TraceBundleView(BaseModel):
     session: SessionRecord
     trace: TraceRecord
+    tasks: list[TaskRecord] = Field(default_factory=list)
+    plan_versions: list[PlanVersionRecord] = Field(default_factory=list)
+    state_snapshots: list[StateSnapshotRecord] = Field(default_factory=list)
     steps: list[StepRecord] = Field(default_factory=list)
     observations: list[ObservationRecord] = Field(default_factory=list)
     state_deltas: list[StateDeltaRecord] = Field(default_factory=list)
@@ -81,6 +87,20 @@ class IngestReceipt(BaseModel):
     audit_event_id: UUID | None = None
 
 
+class RawArtifactPayload(BaseModel):
+    artifact_id: UUID
+    namespace: str = "artifacts"
+    mime_type: str | None = None
+    text_content: str | None = None
+    json_content: dict[str, Any] | list[Any] | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class NormalizedTraceBundleIngestRequest(BaseModel):
+    bundle: TraceBundleView
+    raw_artifacts: list[RawArtifactPayload] = Field(default_factory=list)
+
+
 class TraceSummaryView(BaseModel):
     trace_id: UUID
     session_id: UUID
@@ -93,6 +113,14 @@ class TraceSummaryView(BaseModel):
     claim_count: int = 0
     unsupported_claim_count: int = 0
     latest_audit_outcome: str | None = None
+
+
+class TaskStateView(BaseModel):
+    task: TaskRecord
+    latest_plan: PlanVersionRecord | None = None
+    latest_snapshot: StateSnapshotRecord | None = None
+    plan_revision_count: int = 0
+    snapshot_count: int = 0
 
 
 class TimelineEntryView(BaseModel):

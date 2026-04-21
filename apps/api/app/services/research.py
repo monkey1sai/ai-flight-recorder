@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from apps.api.app.connectors import FixtureArxivConnector, FixtureDriveConnector
-from apps.api.app.repositories import FixtureTraceRepository
+from apps.api.app.repositories import TraceRepository
 from packages.schema.flight_recorder_schema import ResearchSearchResponse
 
 
 class ResearchService:
     def __init__(
         self,
-        repository: FixtureTraceRepository,
+        repository: TraceRepository,
         drive_connector: FixtureDriveConnector,
         arxiv_connector: FixtureArxivConnector,
     ) -> None:

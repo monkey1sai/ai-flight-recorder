@@ -3,8 +3,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import uvicorn
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -13,14 +11,12 @@ def main() -> None:
         sys.path.insert(0, str(ROOT))
 
     from apps.api.app.settings import get_settings
+    from packages.edge_sdk import AerisEdgeClient, build_demo_request
 
     settings = get_settings()
-    if settings.auto_bootstrap:
-        from scripts.bootstrap_local import main as bootstrap_main
-
-        bootstrap_main()
-
-    uvicorn.run("apps.api.app.main:app", host="0.0.0.0", port=8080)
+    client = AerisEdgeClient(settings.api_base_url)
+    receipt = client.ingest(build_demo_request())
+    print(f"ingested trace_id={receipt.trace_id} session_id={receipt.session_id}")
 
 
 if __name__ == "__main__":
