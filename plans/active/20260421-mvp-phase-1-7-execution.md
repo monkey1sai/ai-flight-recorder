@@ -196,6 +196,22 @@ Validation method
 - repo lint/typecheck
 - compose-backed API/Web smoke for `/api/v1/research/*` and `/research`
 
+### Milestone 8 - Verified explanation / replay gate
+Goal
+- promote replay-backed verification into a first-class runnable surface without introducing a full asynchronous replay platform
+
+Deliverables
+- migration for `replay_runs` and `verification_records`
+- typed schema and repository methods for replay verification summaries
+- replay API endpoints for verification read and refresh
+- replay page updates for verification badge, confidence, and replay-backed claim records
+- validation evidence that the seeded verified explanation is queryable through API and visible through the Web replay route
+
+Validation method
+- targeted unit/integration/e2e tests for replay verification derivation and API
+- repo lint/typecheck
+- compose-backed API/Web smoke for `/api/v1/replay/{trace_id}/verification` and `/replay/{trace_id}`
+
 ## 6. Progress
 
 - [x] 2026-04-21 08:08 UTC reread repo instructions, relevant active plans, architecture docs, current runtime files, and web/API fixture surfaces
@@ -208,6 +224,7 @@ Validation method
 - [x] 2026-04-21 08:03 UTC Milestone 5 completed: shipped Product Phase 4 cognitive-state storage, derivation, query API, trace detail panels, and compose-backed validation evidence in `reports/validation/20260421-p1-cognitive-state-slice.md`
 - [x] 2026-04-21 08:23 UTC Milestone 6 completed: shipped claim extraction fallback, claim-centric why panel updates, and compose-backed proof that a claimless live ingest becomes `unsupported` + `self_reported` instead of being upgraded to supported; validation captured in `reports/validation/20260421-claim-centric-why-v1.md`
 - [x] 2026-04-21 09:58 UTC Milestone 7 completed: shipped research ingestion tables, fixture-backed sync receipts with cursor/export provenance, repository-backed corpus query APIs, worker sync helpers, and a persisted corpus explorer on `/research`; validation captured in `reports/validation/20260421-phase6-research-ingestion.md`
+- [x] 2026-04-21 10:36 UTC Milestone 8 completed: shipped replay verification tables, repository-backed verification APIs, replay page verification badge rendering, and validation evidence in `reports/validation/20260421-phase7-verified-explanation.md`
 
 ## 7. Research notes
 
@@ -235,6 +252,8 @@ Validation method
 - Live compose validation exposed a circular foreign-key insertion issue between `tasks.trace_id` and `traces.task_id`; the fix was a two-phase trace upsert (`task_id = null` first, then backfill after task insert).
 - Research Phase 6 initially exposed a contract problem: making `GET /research/*/search` persist corpus data caused a semantic mismatch and duplicated sync runs. The final slice keeps `search` read-only and uses dedicated `POST /sync` endpoints plus server-side sync on the `/research` page.
 - Because `/research` is a server component, loading search and corpus in parallel on first render produced an empty corpus race. The page now syncs first, then reads catalog/corpus/status.
+- The seeded demo trace already carried a `grade=verified` explanation plus `replay_trace_id`, so Phase 7 could stay focused on surfacing explicit replay provenance instead of fabricating new verification evidence.
+- Even though replay provenance already existed inside `explanation_records.metadata_json`, a dedicated `verification_records` surface still simplified the operator contract because the Web/API no longer need to reconstruct badges and counts from arbitrary metadata.
 
 ## 9. Decision log
 
@@ -265,6 +284,14 @@ Validation method
 - 2026-04-21: keep research sync side effects behind explicit `POST /sync` routes and let `/research` call them server-side before loading the corpus.
   Rationale: this preserves correct HTTP semantics and avoids pretending a read-only search request is mutation-free while still letting the page render persisted corpus data on first load.
   Alternatives rejected: mutating storage from `GET /search`; leaving `/research` empty until a separate manual sync step runs.
+
+- 2026-04-21: model replay verification as a latest-only derived surface backed by `replay_runs` and `verification_records`.
+  Rationale: the MVP needs a persisted verification badge and replay-backed proof, but not a multi-run scheduler or historical orchestration layer yet.
+  Alternatives rejected: forcing the replay page to infer badges from explanation metadata; introducing queue semantics before the single-node MVP needs them.
+
+- 2026-04-21: only explanations already marked `grade=verified` are allowed to become replay verification records.
+  Rationale: this preserves the evidence-grade contract and prevents replay routes from upgrading weaker explanation grades into verified proof.
+  Alternatives rejected: inferring replay verification from claim status alone; promoting explanations via text heuristics.
 
 ## 10. Validation plan
 
@@ -323,6 +350,18 @@ Validation method
   `Invoke-WebRequest http://localhost:8080/api/v1/research/corpus`
   `Invoke-WebRequest http://localhost:8080/api/v1/research/sync-runs`
   `Invoke-WebRequest http://localhost:3000/research`
+- verified explanation follow-up:
+  `C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/python.exe -m pytest tests/unit/test_replay_verification.py tests/integration/test_api_operator_surfaces.py tests/e2e/test_observability_flow.py tests/smoke/test_operator_surfaces_assets.py -q`
+  `C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/ruff.exe check apps/api apps/web/lib apps/web/components apps/web/app/replay workers tests packages/schema`
+  `node C:/Repos/active/ai-agent/AI-Flight-Recorder/node_modules/pyright/index.js --pythonpath C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/python.exe -p pyrightconfig.json --level error apps packages workers tests`
+  `npm run lint --workspace @aeris/web`
+  `npm run typecheck --workspace @aeris/web`
+  `docker-compose -f infra/compose/docker-compose.yml down -v --remove-orphans`
+  `docker-compose -f infra/compose/docker-compose.yml config`
+  `docker-compose -f infra/compose/docker-compose.yml up --build -d`
+  `Invoke-WebRequest http://localhost:8080/api/v1/replay/22222222-2222-4222-8222-222222222222/verification`
+  `Invoke-WebRequest -Method Post http://localhost:8080/api/v1/replay/22222222-2222-4222-8222-222222222222/verify`
+  `(Invoke-WebRequest http://localhost:3000/replay/22222222-2222-4222-8222-222222222222).StatusCode`
 
 ## 11. Risks / Blockers
 
@@ -355,6 +394,7 @@ Did not ship
 - dedicated `state_snapshots` query UI outside trace detail
 - observed-evidence auto-linking beyond conservative `self_reported` fallback for claimless traces
 - real credentialed Drive sync, docs export, and arXiv OAI-PMH harvest; Phase 6 persists the fixture/mock contract only
+- asynchronous replay scheduling, richer counterfactual execution, and multi-run verification history
 
 Follow-up
 - if Phase 5 starts, build on the now-verified runnable checkpoint and cognitive-state slice instead of reopening baseline work

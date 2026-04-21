@@ -32,16 +32,25 @@ def test_trace_query_surfaces_return_seeded_contract() -> None:
     claim_response = client.get(
         "/api/v1/traces/22222222-2222-4222-8222-222222222222/claim-evidence"
     )
+    replay_verification_response = client.get(
+        "/api/v1/replay/22222222-2222-4222-8222-222222222222/verification"
+    )
 
     assert traces_response.status_code == 200
     assert timeline_response.status_code == 200
     assert task_response.status_code == 200
     assert plan_response.status_code == 200
     assert claim_response.status_code == 200
+    assert replay_verification_response.status_code == 200
     assert traces_response.json()[0]["trace_kind"] == "agent_run"
     assert task_response.json()["task"]["title"]
     assert task_response.json()["plan_revision_count"] >= 1
     assert plan_response.json()[0]["revision"] >= 0
+    assert replay_verification_response.json()["verification_badge"] in {
+        "replay_verified",
+        "no_replay_evidence",
+    }
+    assert replay_verification_response.json()["replay_run"]["frame_count"] >= 1
     assert timeline_response.json()[0]["evidence_grade"] in {
         "observed",
         "self_reported",
@@ -55,6 +64,14 @@ def test_trace_query_surfaces_return_seeded_contract() -> None:
         "model_prior_only",
         "conflicted",
     }
+
+
+def test_replay_verify_endpoint_refreshes_summary() -> None:
+    response = client.post("/api/v1/replay/22222222-2222-4222-8222-222222222222/verify")
+
+    assert response.status_code == 200
+    assert response.json()["verified_claim_count"] >= 1
+    assert response.json()["verification_records"][0]["evidence_grade"] == "verified"
 
 
 def test_research_and_admin_surfaces_expose_governance_metadata() -> None:

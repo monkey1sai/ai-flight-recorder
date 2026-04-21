@@ -11,6 +11,10 @@ from uuid import UUID, uuid4
 import pg8000.dbapi
 
 from apps.api.app.cognitive import build_task_state_view, ensure_cognitive_state
+from apps.api.app.verification import (
+    derive_replay_verification,
+    summarize_replay_verification,
+)
 from apps.api.app.why import ensure_why_records
 from packages.schema.flight_recorder_schema import (
     ArtifactRecord,
@@ -26,6 +30,8 @@ from packages.schema.flight_recorder_schema import (
     PlanVersionRecord,
     PolicyRuleRecord,
     ReplayFrameView,
+    ReplayRunRecord,
+    ReplayVerificationView,
     ResearchCorpusView,
     ResearchDocumentRecord,
     ResearchSearchResponse,
@@ -44,6 +50,7 @@ from packages.schema.flight_recorder_schema import (
     TraceBundleView,
     TraceRecord,
     TraceSummaryView,
+    VerificationRecord,
 )
 
 from .helpers import (
@@ -355,6 +362,10 @@ class PostgresTraceRepository:
                 self._upsert_evaluation(cursor, evaluation)
             for intervention in bundle.interventions:
                 self._upsert_intervention(cursor, intervention)
+            self._replace_replay_verification(
+                cursor,
+                derive_replay_verification(bundle),
+            )
             for policy in bundle.policies:
                 self._upsert_policy(cursor, policy)
             for retention in bundle.retention:
@@ -415,6 +426,49 @@ class PostgresTraceRepository:
     def build_replay(self, trace_id: UUID) -> list[ReplayFrameView]:
         bundle = self.get_trace_bundle(trace_id)
         return [] if bundle is None else build_replay(bundle)
+
+    def get_replay_verification(self, trace_id: UUID) -> ReplayVerificationView | None:
+        bundle = self.get_trace_bundle(trace_id)
+        if bundle is None:
+            return None
+
+        replay_run = self._fetch_one(
+            """
+            select * from replay_runs
+            where trace_id = %s::uuid
+            order by completed_at desc nulls last, started_at desc
+            limit 1
+            """,
+            [str(trace_id)],
+        )
+        records = self._fetch_models(
+            VerificationRecord,
+            """
+            select * from verification_records
+            where trace_id = %s::uuid
+            order by created_at, claim_text
+            """,
+            [str(trace_id)],
+            empty_on=[],
+        )
+        if replay_run is None and not records:
+            return self.refresh_replay_verification(trace_id)
+        return summarize_replay_verification(
+            trace_id=trace_id,
+            claim_count=len(bundle.claims),
+            replay_run=self._model(ReplayRunRecord, replay_run) if replay_run else None,
+            records=records,
+        )
+
+    def refresh_replay_verification(self, trace_id: UUID) -> ReplayVerificationView | None:
+        bundle = self.get_trace_bundle(trace_id)
+        if bundle is None:
+            return None
+        view = derive_replay_verification(bundle)
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            self._replace_replay_verification(cursor, view)
+        return self.get_replay_verification(trace_id)
 
     def get_task_state(self, trace_id: UUID) -> TaskStateView | None:
         bundle = self.get_trace_bundle(trace_id)
@@ -1075,6 +1129,90 @@ class PostgresTraceRepository:
             ],
         )
 
+    def _upsert_replay_run(self, cursor: Any, replay_run: ReplayRunRecord) -> None:
+        cursor.execute(
+            """
+            insert into replay_runs (
+                id, trace_id, status, method, frame_count, verified_claim_count,
+                started_at, completed_at, metadata_json
+            ) values (
+                %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s::jsonb
+            )
+            on conflict (id) do update set
+                trace_id = excluded.trace_id,
+                status = excluded.status,
+                method = excluded.method,
+                frame_count = excluded.frame_count,
+                verified_claim_count = excluded.verified_claim_count,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at,
+                metadata_json = excluded.metadata_json
+            """,
+            [
+                str(replay_run.id),
+                str(replay_run.trace_id),
+                replay_run.status,
+                replay_run.method,
+                replay_run.frame_count,
+                replay_run.verified_claim_count,
+                replay_run.started_at,
+                replay_run.completed_at,
+                json.dumps(replay_run.metadata_json),
+            ],
+        )
+
+    def _upsert_verification_record(
+        self,
+        cursor: Any,
+        record: VerificationRecord,
+    ) -> None:
+        cursor.execute(
+            """
+            insert into verification_records (
+                id, trace_id, claim_id, claim_text, explanation_id, replay_run_id,
+                verification_status, evidence_grade, verification_badge, method, summary,
+                confidence, replay_trace_id, supporting_edge_ids, metadata_json, created_at
+            ) values (
+                %s::uuid, %s::uuid, %s::uuid, %s, %s::uuid, %s::uuid, %s, %s, %s, %s, %s,
+                %s, %s::uuid, %s::uuid[], %s::jsonb, %s
+            )
+            on conflict (id) do update set
+                trace_id = excluded.trace_id,
+                claim_id = excluded.claim_id,
+                claim_text = excluded.claim_text,
+                explanation_id = excluded.explanation_id,
+                replay_run_id = excluded.replay_run_id,
+                verification_status = excluded.verification_status,
+                evidence_grade = excluded.evidence_grade,
+                verification_badge = excluded.verification_badge,
+                method = excluded.method,
+                summary = excluded.summary,
+                confidence = excluded.confidence,
+                replay_trace_id = excluded.replay_trace_id,
+                supporting_edge_ids = excluded.supporting_edge_ids,
+                metadata_json = excluded.metadata_json,
+                created_at = excluded.created_at
+            """,
+            [
+                str(record.id),
+                str(record.trace_id),
+                str(record.claim_id),
+                record.claim_text,
+                str(record.explanation_id) if record.explanation_id is not None else None,
+                str(record.replay_run_id) if record.replay_run_id is not None else None,
+                record.verification_status.value,
+                record.evidence_grade.value,
+                record.verification_badge,
+                record.method,
+                record.summary,
+                record.confidence,
+                str(record.replay_trace_id) if record.replay_trace_id is not None else None,
+                [str(item) for item in record.supporting_edge_ids],
+                json.dumps(record.metadata_json),
+                record.created_at,
+            ],
+        )
+
     def _upsert_evaluation(self, cursor: Any, evaluation: EvaluationRecord) -> None:
         cursor.execute(
             """
@@ -1306,3 +1444,25 @@ class PostgresTraceRepository:
                 json.dumps(item.provenance.metadata_json),
             ],
         )
+
+    def _replace_replay_verification(
+        self,
+        cursor: Any,
+        view: ReplayVerificationView,
+    ) -> None:
+        cursor.execute(
+            "delete from verification_records where trace_id = %s::uuid",
+            [str(view.trace_id)],
+        )
+        cursor.execute(
+            "delete from replay_runs where trace_id = %s::uuid",
+            [str(view.trace_id)],
+        )
+        if view.replay_run is not None:
+            self._upsert_replay_run(cursor, view.replay_run)
+        for record in view.verification_records:
+            replay_run_id = view.replay_run.id if view.replay_run is not None else None
+            self._upsert_verification_record(
+                cursor,
+                record.model_copy(update={"replay_run_id": replay_run_id}),
+            )

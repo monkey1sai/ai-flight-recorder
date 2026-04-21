@@ -7,6 +7,7 @@ import {
   researchCorpus as researchCorpusFallback,
   researchSyncRuns as researchSyncRunsFallback,
   replayFrames as replayFramesFallback,
+  replayVerification as replayVerificationFallback,
   stateDiffs as stateDiffsFallback,
   taskState as taskStateFallback,
   timelineEntries as timelineEntriesFallback,
@@ -17,6 +18,7 @@ import {
   type PlanVersionRecord,
   type PolicyRuleRecord,
   type ReplayFrame,
+  type ReplayVerification,
   type ResearchDocumentRecord,
   type ResearchSyncRunRecord,
   type RetentionPolicyRecord,
@@ -73,6 +75,8 @@ type ApiReplayFrame = {
   claims: ReplayFrame["claims"];
   interventions: ReplayFrame["interventions"];
 };
+
+type ApiReplayVerification = ReplayVerification;
 
 type ApiTraceSummary = {
   trace_id: string;
@@ -219,6 +223,14 @@ export async function getReplayFrames(traceId: string): Promise<ReplayFrame[]> {
     claims: item.claims,
     interventions: item.interventions,
   }));
+}
+
+export async function getReplayVerification(traceId: string): Promise<ReplayVerification> {
+  const data = await fetchOrFallback<ApiReplayVerification>(
+    `/api/v1/replay/${traceId}/verification`,
+    null,
+  );
+  return data ?? replayVerificationFallback;
 }
 
 export async function getResearchCatalog(): Promise<{

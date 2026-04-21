@@ -11,12 +11,15 @@ def test_operator_surface_assets_exist() -> None:
         ROOT / "apps" / "api" / "app" / "settings.py",
         ROOT / "apps" / "api" / "app" / "bootstrap.py",
         ROOT / "apps" / "api" / "app" / "why.py",
+        ROOT / "apps" / "api" / "app" / "verification.py",
         ROOT / "apps" / "api" / "app" / "routers" / "research.py",
         ROOT / "apps" / "web" / "app" / "timeline" / "page.tsx",
         ROOT / "apps" / "web" / "app" / "traces" / "[traceId]" / "page.tsx",
+        ROOT / "apps" / "web" / "app" / "replay" / "[traceId]" / "page.tsx",
         ROOT / "apps" / "web" / "components" / "research-corpus-panel.tsx",
         ROOT / "apps" / "web" / "components" / "task-summary-panel.tsx",
         ROOT / "apps" / "web" / "components" / "plan-history-panel.tsx",
+        ROOT / "apps" / "web" / "components" / "replay-controller.tsx",
         ROOT / "apps" / "web" / "app" / "admin" / "page.tsx",
         ROOT / "apps" / "web" / "lib" / "api.ts",
         ROOT / "edge" / "daemon" / "Cargo.toml",
@@ -24,7 +27,9 @@ def test_operator_surface_assets_exist() -> None:
         ROOT / "packages" / "schema" / "migrations" / "0002_governance_surfaces.up.sql",
         ROOT / "packages" / "schema" / "migrations" / "0003_cognitive_state_surfaces.up.sql",
         ROOT / "packages" / "schema" / "migrations" / "0004_research_ingestion_surfaces.up.sql",
+        ROOT / "packages" / "schema" / "migrations" / "0005_replay_verification_surfaces.up.sql",
         ROOT / "workers" / "drive_sync" / "job.py",
+        ROOT / "workers" / "replay" / "job.py",
         ROOT / "workers" / "arxiv_sync" / "job.py",
         ROOT / "infra" / "compose" / "docker-compose.yml",
         ROOT / "infra" / "k8s" / "api-deployment.yaml",
@@ -33,6 +38,7 @@ def test_operator_surface_assets_exist() -> None:
         ROOT / "reports" / "validation" / "20260417-platform-slices-3-10.md",
         ROOT / "reports" / "validation" / "20260421-mvp-live-local-baseline.md",
         ROOT / "reports" / "validation" / "20260421-phase6-research-ingestion.md",
+        ROOT / "reports" / "validation" / "20260421-phase7-verified-explanation.md",
     ]
 
     missing = [str(path.relative_to(ROOT)) for path in required_paths if not path.exists()]
