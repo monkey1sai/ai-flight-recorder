@@ -17,6 +17,9 @@ export function WhyPanel({ flows }: { flows: ClaimFlow[] }) {
             {hasUnsupportedFlag(flow) ? (
               <span className="chip">unsupported evidence gap</span>
             ) : null}
+            {hasReplayVerification(flow) ? (
+              <span className="chip">verification badge replay_verified</span>
+            ) : null}
           </div>
           <div className="chip-row">
             {flow.stepIds.map((stepId) => (
@@ -24,6 +27,9 @@ export function WhyPanel({ flows }: { flows: ClaimFlow[] }) {
                 step {stepId.slice(0, 8)}
               </span>
             ))}
+            {replayTraceLabel(flow) ? (
+              <span className="chip">{replayTraceLabel(flow)}</span>
+            ) : null}
           </div>
           <div className="subpanel">
             <span className="eyebrow">Explanations</span>
@@ -77,4 +83,15 @@ function hasUnsupportedFlag(flow: ClaimFlow) {
   return flow.claim.verification_status === "unsupported"
     || flow.claim.verification_status === "model_prior_only"
     || flow.explanations.some((item) => item.metadata_json?.unsupported_flag === true);
+}
+
+function hasReplayVerification(flow: ClaimFlow) {
+  return flow.explanations.some((item) => item.grade === "verified");
+}
+
+function replayTraceLabel(flow: ClaimFlow) {
+  const replayTraceId = flow.explanations.find(
+    (item) => item.grade === "verified" && typeof item.metadata_json?.replay_trace_id === "string",
+  )?.metadata_json?.replay_trace_id;
+  return typeof replayTraceId === "string" ? `replay ${replayTraceId.slice(0, 8)}` : null;
 }

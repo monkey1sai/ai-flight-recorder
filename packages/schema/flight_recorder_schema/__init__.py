@@ -31,6 +31,8 @@ from .surfaces import (
     PolicyRuleRecord,
     RawArtifactPayload,
     ReplayFrameView,
+    ReplayRunRecord,
+    ReplayVerificationView,
     ResearchConnectorSyncResult,
     ResearchCorpusView,
     ResearchDocumentRecord,
@@ -45,6 +47,7 @@ from .surfaces import (
     TimelineEntryView,
     TraceBundleView,
     TraceSummaryView,
+    VerificationRecord,
 )
 
 __all__ = [
@@ -68,6 +71,8 @@ __all__ = [
     "PolicyRuleRecord",
     "RawArtifactPayload",
     "ReplayFrameView",
+    "ReplayRunRecord",
+    "ReplayVerificationView",
     "ResearchConnectorSyncResult",
     "ResearchCorpusView",
     "ResearchDocumentRecord",
@@ -93,4 +98,5 @@ __all__ = [
     "TraceRecord",
     "TraceSummaryView",
     "TraceStatus",
+    "VerificationRecord",
 ]

@@ -4,6 +4,10 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from apps.api.app.cognitive import build_task_state_view, ensure_cognitive_state
+from apps.api.app.verification import (
+    derive_replay_verification,
+    summarize_replay_verification,
+)
 from apps.api.app.why import ensure_why_records
 from packages.schema.flight_recorder_schema import (
     ArtifactRecord,
@@ -14,6 +18,8 @@ from packages.schema.flight_recorder_schema import (
     IngestReceipt,
     PlanVersionRecord,
     ReplayFrameView,
+    ReplayRunRecord,
+    ReplayVerificationView,
     ResearchCorpusView,
     ResearchDocumentRecord,
     ResearchSearchResponse,
@@ -27,6 +33,7 @@ from packages.schema.flight_recorder_schema import (
     TimelineEntryView,
     TraceBundleView,
     TraceSummaryView,
+    VerificationRecord,
 )
 from packages.testkit import load_trace_bundle_fixture
 
@@ -65,6 +72,9 @@ class FixtureTraceRepository:
         self._research_documents: dict[str, ResearchDocumentRecord] = {}
         self._research_sync_runs: dict[UUID, ResearchSyncRunRecord] = {}
         self._research_cursors: dict[tuple[str, str], ResearchSyncCursorRecord] = {}
+        self._replay_runs: dict[UUID, ReplayRunRecord] = {}
+        self._verification_records: dict[UUID, VerificationRecord] = {}
+        self._replace_replay_verification(seed.trace.id, derive_replay_verification(seed))
 
     @classmethod
     def seeded(cls) -> "FixtureTraceRepository":
@@ -131,6 +141,7 @@ class FixtureTraceRepository:
             self._policies[policy.id] = policy
         for retention_policy in bundle.retention:
             self._retention[retention_policy.id] = retention_policy
+        self.refresh_replay_verification(bundle.trace.id)
 
         audit_event = self.record_audit_event(
             trace_id=bundle.trace.id,
@@ -196,6 +207,36 @@ class FixtureTraceRepository:
         if bundle is None:
             return []
         return build_replay(bundle)
+
+    def get_replay_verification(self, trace_id: UUID) -> ReplayVerificationView | None:
+        bundle = self.get_trace_bundle(trace_id)
+        if bundle is None:
+            return None
+        replay_run = self._replay_runs.get(trace_id)
+        records = sorted(
+            [
+                record
+                for record in self._verification_records.values()
+                if record.trace_id == trace_id
+            ],
+            key=lambda item: (item.claim_text, item.created_at, str(item.id)),
+        )
+        if replay_run is None and not records:
+            return self.refresh_replay_verification(trace_id)
+        return summarize_replay_verification(
+            trace_id=trace_id,
+            claim_count=len(bundle.claims),
+            replay_run=replay_run,
+            records=records,
+        )
+
+    def refresh_replay_verification(self, trace_id: UUID) -> ReplayVerificationView | None:
+        bundle = self.get_trace_bundle(trace_id)
+        if bundle is None:
+            return None
+        view = derive_replay_verification(bundle)
+        self._replace_replay_verification(trace_id, view)
+        return self.get_replay_verification(trace_id)
 
     def get_task_state(self, trace_id: UUID) -> TaskStateView | None:
         bundle = self.get_trace_bundle(trace_id)
@@ -427,3 +468,23 @@ class FixtureTraceRepository:
             [artifact for artifact in self._artifacts.values() if artifact.id in artifact_ids],
             key=lambda artifact: artifact.id,
         )
+
+    def _replace_replay_verification(
+        self,
+        trace_id: UUID,
+        view: ReplayVerificationView,
+    ) -> None:
+        stale_record_ids = [
+            record_id
+            for record_id, record in self._verification_records.items()
+            if record.trace_id == trace_id
+        ]
+        for record_id in stale_record_ids:
+            del self._verification_records[record_id]
+        if view.replay_run is not None:
+            self._replay_runs[trace_id] = view.replay_run
+        for record in view.verification_records:
+            replay_run_id = view.replay_run.id if view.replay_run is not None else None
+            self._verification_records[record.id] = record.model_copy(
+                update={"replay_run_id": replay_run_id}
+            )

@@ -154,6 +154,7 @@ export interface ExplanationRecord {
   supporting_edge_ids: string[];
   confidence?: number;
   metadata_json?: Record<string, unknown>;
+  created_at?: string;
 }
 
 export interface InterventionRecord {
@@ -293,6 +294,48 @@ export interface ReplayFrame {
   interventions: InterventionRecord[];
 }
 
+export interface ReplayRunRecord {
+  id: string;
+  trace_id: string;
+  status: string;
+  method: string;
+  frame_count: number;
+  verified_claim_count: number;
+  started_at: string;
+  completed_at?: string;
+  metadata_json?: Record<string, unknown>;
+}
+
+export interface VerificationRecord {
+  id: string;
+  trace_id: string;
+  claim_id: string;
+  claim_text: string;
+  explanation_id?: string;
+  replay_run_id?: string;
+  verification_status: ClaimVerificationStatus;
+  evidence_grade: EvidenceGrade;
+  verification_badge: string;
+  method: string;
+  summary: string;
+  confidence?: number;
+  replay_trace_id?: string;
+  supporting_edge_ids: string[];
+  metadata_json?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ReplayVerification {
+  trace_id: string;
+  claim_count: number;
+  verified_claim_count: number;
+  verification_badge: string;
+  confidence?: number;
+  replay_trace_ids: string[];
+  replay_run?: ReplayRunRecord;
+  verification_records: VerificationRecord[];
+}
+
 export interface GovernanceSnapshot {
   auditEvents: AuditEventRecord[];
   policies: PolicyRuleRecord[];
@@ -417,6 +460,7 @@ export const replayFrames: ReplayFrame[] = traceBundle.steps.map((step) => {
     interventions: traceBundle.interventions.filter((item) => item.step_id === step.id),
   };
 });
+export const replayVerification: ReplayVerification = buildReplayVerification(traceBundle);
 
 export const stateDiffs = traceBundle.state_deltas;
 export const governanceSnapshot: GovernanceSnapshot = {
@@ -620,5 +664,71 @@ function buildTaskState(bundle: TraceBundle): TaskState | undefined {
     latestSnapshot: bundle.state_snapshots.at(-1),
     planRevisionCount: bundle.plan_versions.length,
     snapshotCount: bundle.state_snapshots.length,
+  };
+}
+
+function buildReplayVerification(bundle: TraceBundle): ReplayVerification {
+  const verificationRecords: VerificationRecord[] = bundle.claims.flatMap((claim) =>
+    bundle.explanations
+      .filter((explanation) => explanation.claim_id === claim.id && explanation.grade === "verified")
+      .map((explanation) => ({
+        id: `verification-${claim.id}-${explanation.id}`,
+        trace_id: bundle.trace.id,
+        claim_id: claim.id,
+        claim_text: claim.claim_text,
+        explanation_id: explanation.id,
+        replay_run_id: `replay-run-${bundle.trace.id}`,
+        verification_status: claim.verification_status,
+        evidence_grade: explanation.grade,
+        verification_badge: explanation.metadata_json?.replay_trace_id
+          ? "replay_verified"
+          : "verified_without_replay_ref",
+        method: explanation.method,
+        summary: explanation.summary,
+        confidence: explanation.confidence ?? claim.confidence,
+        replay_trace_id:
+          typeof explanation.metadata_json?.replay_trace_id === "string"
+            ? explanation.metadata_json.replay_trace_id
+            : undefined,
+        supporting_edge_ids: explanation.supporting_edge_ids,
+        metadata_json: {
+          ...explanation.metadata_json,
+          derived_from: "mock-data",
+        },
+        created_at: explanation.created_at ?? bundle.trace.started_at,
+      })),
+  );
+  const replayTraceIds = [...new Set(
+    verificationRecords
+      .map((record) => record.replay_trace_id)
+      .filter((record): record is string => Boolean(record)),
+  )].sort((left, right) => left.localeCompare(right));
+  return {
+    trace_id: bundle.trace.id,
+    claim_count: bundle.claims.length,
+    verified_claim_count: new Set(verificationRecords.map((record) => record.claim_id)).size,
+    verification_badge: verificationRecords.length ? "replay_verified" : "no_replay_evidence",
+    confidence: verificationRecords.reduce<number | undefined>((current, record) => {
+      if (typeof record.confidence !== "number") {
+        return current;
+      }
+      return typeof current === "number" ? Math.max(current, record.confidence) : record.confidence;
+    }, undefined),
+    replay_trace_ids: replayTraceIds,
+    replay_run: {
+      id: `replay-run-${bundle.trace.id}`,
+      trace_id: bundle.trace.id,
+      status: "completed",
+      method: verificationRecords[0]?.method ?? "no_replay_evidence",
+      frame_count: bundle.steps.length,
+      verified_claim_count: new Set(verificationRecords.map((record) => record.claim_id)).size,
+      started_at: bundle.trace.started_at,
+      completed_at: bundle.trace.ended_at ?? bundle.trace.started_at,
+      metadata_json: {
+        derived_from: "mock-data",
+        replay_trace_ids: replayTraceIds,
+      },
+    },
+    verification_records: verificationRecords,
   };
 }

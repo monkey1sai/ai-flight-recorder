@@ -166,6 +166,48 @@ class ReplayFrameView(BaseModel):
     interventions: list[InterventionRecord] = Field(default_factory=list)
 
 
+class ReplayRunRecord(BaseModel):
+    id: UUID
+    trace_id: UUID
+    status: str
+    method: str
+    frame_count: int = Field(ge=0)
+    verified_claim_count: int = Field(ge=0)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class VerificationRecord(BaseModel):
+    id: UUID
+    trace_id: UUID
+    claim_id: UUID
+    claim_text: str
+    explanation_id: UUID | None = None
+    replay_run_id: UUID | None = None
+    verification_status: ClaimVerificationStatus
+    evidence_grade: EvidenceGrade
+    verification_badge: str
+    method: str
+    summary: str
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    replay_trace_id: UUID | None = None
+    supporting_edge_ids: list[UUID] = Field(default_factory=list)
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ReplayVerificationView(BaseModel):
+    trace_id: UUID
+    claim_count: int = Field(ge=0)
+    verified_claim_count: int = Field(ge=0)
+    verification_badge: str
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    replay_trace_ids: list[UUID] = Field(default_factory=list)
+    replay_run: ReplayRunRecord | None = None
+    verification_records: list[VerificationRecord] = Field(default_factory=list)
+
+
 class ResearchSourceRecord(BaseModel):
     source_type: str
     source_id: str

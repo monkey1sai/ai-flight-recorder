@@ -9,6 +9,7 @@ from packages.schema.flight_recorder_schema import (
     IngestReceipt,
     PlanVersionRecord,
     ReplayFrameView,
+    ReplayVerificationView,
     ResearchCorpusView,
     ResearchSearchResponse,
     ResearchSyncCursorRecord,
@@ -38,6 +39,10 @@ class TraceRepository(Protocol):
     def build_claim_flows(self, trace_id: UUID) -> list[ClaimEvidenceFlowView]: ...
 
     def build_replay(self, trace_id: UUID) -> list[ReplayFrameView]: ...
+
+    def get_replay_verification(self, trace_id: UUID) -> ReplayVerificationView | None: ...
+
+    def refresh_replay_verification(self, trace_id: UUID) -> ReplayVerificationView | None: ...
 
     def get_task_state(self, trace_id: UUID) -> TaskStateView | None: ...
 
