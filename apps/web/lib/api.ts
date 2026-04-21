@@ -2,20 +2,23 @@ import {
   claimFlows as claimFlowsFallback,
   demoTraceBundle,
   governanceSnapshot as governanceSnapshotFallback,
+  planHistory as planHistoryFallback,
   researchCatalog as researchCatalogFallback,
   replayFrames as replayFramesFallback,
   stateDiffs as stateDiffsFallback,
+  taskState as taskStateFallback,
   timelineEntries as timelineEntriesFallback,
   traceSummaries as traceSummariesFallback,
   type AuditEventRecord,
   type ClaimFlow,
   type GovernanceSnapshot,
-  type TraceStatus,
+  type PlanVersionRecord,
   type PolicyRuleRecord,
   type ReplayFrame,
   type ResearchDocumentRecord,
   type RetentionPolicyRecord,
   type StateDeltaRecord,
+  type TaskState,
   type TimelineEntry,
   type TraceBundle,
   type TraceSummary,
@@ -88,6 +91,23 @@ type ApiGovernanceSnapshot = {
   retention: RetentionPolicyRecord[];
 };
 
+type ApiTaskState = {
+  task: TaskState["task"];
+  latest_plan?: PlanVersionRecord;
+  latest_snapshot?: {
+    id: string;
+    trace_id: string;
+    step_id?: string;
+    task_id?: string;
+    snapshot_index: number;
+    state_json: Record<string, unknown>;
+    metadata_json?: Record<string, unknown>;
+    created_at?: string;
+  };
+  plan_revision_count: number;
+  snapshot_count: number;
+};
+
 export async function listTraceSummaries(): Promise<TraceSummary[]> {
   const data = await fetchOrFallback<ApiTraceSummary[]>("/api/v1/traces", null);
   if (!data) {
@@ -95,7 +115,7 @@ export async function listTraceSummaries(): Promise<TraceSummary[]> {
   }
   return data.map((item) => ({
     traceId: item.trace_id,
-    status: item.status as TraceStatus,
+    status: item.status,
     modelName: item.model_name ?? "unknown",
     stepCount: item.step_count,
     claimCount: item.claim_count,
@@ -224,6 +244,28 @@ export async function getGovernanceSnapshot(traceId?: string): Promise<Governanc
     policies: data.policies,
     retention: data.retention,
   };
+}
+
+export async function getTaskState(traceId: string): Promise<TaskState | undefined> {
+  const data = await fetchOrFallback<ApiTaskState>(`/api/v1/traces/${traceId}/task`, null);
+  if (!data) {
+    return taskStateFallback;
+  }
+  return {
+    task: data.task,
+    latestPlan: data.latest_plan,
+    latestSnapshot: data.latest_snapshot,
+    planRevisionCount: data.plan_revision_count,
+    snapshotCount: data.snapshot_count,
+  };
+}
+
+export async function getPlanHistory(traceId: string): Promise<PlanVersionRecord[]> {
+  const data = await fetchOrFallback<PlanVersionRecord[]>(
+    `/api/v1/traces/${traceId}/plan-history`,
+    null,
+  );
+  return data ?? planHistoryFallback;
 }
 
 async function fetchOrFallback<T>(path: string, fallback: T | null): Promise<T | null> {
