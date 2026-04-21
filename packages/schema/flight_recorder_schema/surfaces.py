@@ -172,8 +172,10 @@ class ResearchSourceRecord(BaseModel):
     source_uri: str
     retrieved_at: datetime
     query: str
+    cursor: str | None = None
     license_or_terms_note: str | None = None
     checksum: str | None = None
+    export_status: str | None = None
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -191,6 +193,48 @@ class ResearchDocumentRecord(BaseModel):
 
 class ResearchSearchResponse(BaseModel):
     query: str
+    items: list[ResearchDocumentRecord] = Field(default_factory=list)
+
+
+class ResearchConnectorSyncResult(BaseModel):
+    source_type: str
+    response: ResearchSearchResponse
+    cursor: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchSyncRunRecord(BaseModel):
+    id: UUID
+    source_type: str
+    query: str
+    cursor: str | None = None
+    status: str
+    item_count: int = 0
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchSyncCursorRecord(BaseModel):
+    source_type: str
+    cursor_key: str
+    cursor_value: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchSyncReceipt(BaseModel):
+    sync_run_id: UUID
+    source_type: str
+    query: str
+    cursor: str | None = None
+    item_count: int = 0
+    upserted_count: int = 0
+
+
+class ResearchCorpusView(BaseModel):
+    query: str = ""
+    source_type: str | None = None
     items: list[ResearchDocumentRecord] = Field(default_factory=list)
 
 

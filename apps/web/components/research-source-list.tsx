@@ -33,6 +33,9 @@ export function ResearchSourceList({
             <p className="muted-line">
               {item.provenance.source_uri} · retrieved {item.provenance.retrieved_at}
             </p>
+            <p className="muted-line">
+              cursor {item.provenance.cursor ?? "n/a"} · export {item.provenance.export_status ?? "n/a"}
+            </p>
           </article>
         ))}
       </div>

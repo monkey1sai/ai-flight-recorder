@@ -4,6 +4,8 @@ import {
   governanceSnapshot as governanceSnapshotFallback,
   planHistory as planHistoryFallback,
   researchCatalog as researchCatalogFallback,
+  researchCorpus as researchCorpusFallback,
+  researchSyncRuns as researchSyncRunsFallback,
   replayFrames as replayFramesFallback,
   stateDiffs as stateDiffsFallback,
   taskState as taskStateFallback,
@@ -16,6 +18,7 @@ import {
   type PolicyRuleRecord,
   type ReplayFrame,
   type ResearchDocumentRecord,
+  type ResearchSyncRunRecord,
   type RetentionPolicyRecord,
   type StateDeltaRecord,
   type TaskState,
@@ -84,6 +87,14 @@ type ApiResearchResponse = {
   query: string;
   items: ResearchDocumentRecord[];
 };
+
+type ApiResearchCorpusResponse = {
+  query: string;
+  source_type?: string;
+  items: ResearchDocumentRecord[];
+};
+
+type ApiResearchSyncRun = ResearchSyncRunRecord;
 
 type ApiGovernanceSnapshot = {
   audit_events: AuditEventRecord[];
@@ -228,6 +239,80 @@ export async function getResearchCatalog(): Promise<{
     drive: drive ?? researchCatalogFallback.drive,
     arxiv: arxiv ?? researchCatalogFallback.arxiv,
   };
+}
+
+export async function syncDefaultResearchSources(): Promise<void> {
+  try {
+    await Promise.all([
+      fetch(`${API_BASE_URL}/api/v1/research/drive/sync?q=incident notes`, {
+        method: "POST",
+        cache: "no-store",
+      }),
+      fetch(
+        `${API_BASE_URL}/api/v1/research/arxiv/sync?q=faithful explanations provenance`,
+        {
+          method: "POST",
+          cache: "no-store",
+        },
+      ),
+    ]);
+  } catch {
+    // Ignore sync failures and let fallback data render the page.
+  }
+}
+
+export async function getResearchCorpus(
+  sourceType?: string,
+  query = "",
+): Promise<ApiResearchCorpusResponse> {
+  const params = new URLSearchParams();
+  if (sourceType) {
+    params.set("source_type", sourceType);
+  }
+  if (query) {
+    params.set("q", query);
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  const data = await fetchOrFallback<ApiResearchCorpusResponse>(
+    `/api/v1/research/corpus${suffix}`,
+    null,
+  );
+  if (data) {
+    return data;
+  }
+  const items = researchCorpusFallback.items.filter((item) => {
+    if (sourceType && item.provenance.source_type !== sourceType) {
+      return false;
+    }
+    if (!query.trim()) {
+      return true;
+    }
+    const haystack = `${item.title} ${item.summary} ${item.tags.join(" ")}`.toLowerCase();
+    return query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .every((token) => haystack.includes(token));
+  });
+  return {
+    query,
+    source_type: sourceType,
+    items,
+  };
+}
+
+export async function getResearchSyncRuns(
+  sourceType?: string,
+): Promise<ApiResearchSyncRun[]> {
+  const suffix = sourceType ? `?source_type=${encodeURIComponent(sourceType)}` : "";
+  const data = await fetchOrFallback<ApiResearchSyncRun[]>(
+    `/api/v1/research/sync-runs${suffix}`,
+    null,
+  );
+  return data
+    ?? researchSyncRunsFallback.filter((item) =>
+      sourceType ? item.source_type === sourceType : true,
+    );
 }
 
 export async function getGovernanceSnapshot(traceId?: string): Promise<GovernanceSnapshot> {

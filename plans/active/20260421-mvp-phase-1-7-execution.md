@@ -180,6 +180,22 @@ Validation method
 - repo lint/typecheck
 - compose-backed live ingest of a claimless trace plus `claim-evidence` verification
 
+### Milestone 7 - Research ingestion slice
+Goal
+- persist fixture-backed Drive/arXiv sync results into the single Postgres MVP store and expose a runnable corpus explorer
+
+Deliverables
+- migration for `research_sync_runs`, `research_sync_cursors`, and `research_documents`
+- typed schema and repository methods for corpus items, sync runs, and cursors
+- fixture connector sync receipts with cursor / export status provenance
+- API endpoints for sync, corpus listing, and sync-run history
+- `/research` page updated to show persisted corpus and sync status after server-side sync
+
+Validation method
+- targeted unit/integration tests for connector sync metadata and corpus persistence
+- repo lint/typecheck
+- compose-backed API/Web smoke for `/api/v1/research/*` and `/research`
+
 ## 6. Progress
 
 - [x] 2026-04-21 08:08 UTC reread repo instructions, relevant active plans, architecture docs, current runtime files, and web/API fixture surfaces
@@ -191,6 +207,7 @@ Validation method
 - [x] 2026-04-21 07:51 UTC reran Milestone 4 as runnable validation / handoff: `docker-compose up --build -d` succeeded, demo ingest succeeded, API returned live trace data, and Web routes `/`, `/timeline`, `/traces/[id]`, `/replay/[id]`, `/research`, `/admin` all returned HTTP 200
 - [x] 2026-04-21 08:03 UTC Milestone 5 completed: shipped Product Phase 4 cognitive-state storage, derivation, query API, trace detail panels, and compose-backed validation evidence in `reports/validation/20260421-p1-cognitive-state-slice.md`
 - [x] 2026-04-21 08:23 UTC Milestone 6 completed: shipped claim extraction fallback, claim-centric why panel updates, and compose-backed proof that a claimless live ingest becomes `unsupported` + `self_reported` instead of being upgraded to supported; validation captured in `reports/validation/20260421-claim-centric-why-v1.md`
+- [x] 2026-04-21 09:58 UTC Milestone 7 completed: shipped research ingestion tables, fixture-backed sync receipts with cursor/export provenance, repository-backed corpus query APIs, worker sync helpers, and a persisted corpus explorer on `/research`; validation captured in `reports/validation/20260421-phase6-research-ingestion.md`
 
 ## 7. Research notes
 
@@ -216,6 +233,8 @@ Validation method
 - The seeded demo trace did not carry explicit cognitive records, so the repository and fixture fallback now derive them deterministically from the existing `trace`, `steps`, and `state_deltas` instead of requiring fixture JSON rewrites.
 - Product Phase 5 also fit the same additive pattern: claim extraction fallback could run at ingest time without introducing a separate why endpoint or changing the edge SDK contract.
 - Live compose validation exposed a circular foreign-key insertion issue between `tasks.trace_id` and `traces.task_id`; the fix was a two-phase trace upsert (`task_id = null` first, then backfill after task insert).
+- Research Phase 6 initially exposed a contract problem: making `GET /research/*/search` persist corpus data caused a semantic mismatch and duplicated sync runs. The final slice keeps `search` read-only and uses dedicated `POST /sync` endpoints plus server-side sync on the `/research` page.
+- Because `/research` is a server component, loading search and corpus in parallel on first render produced an empty corpus race. The page now syncs first, then reads catalog/corpus/status.
 
 ## 9. Decision log
 
@@ -242,6 +261,10 @@ Validation method
 - 2026-04-21: for claimless bundles, extract claims from final output text and default them to `verification_status=unsupported` with a `self_reported` explanation.
   Rationale: Phase 5 requires claim-centric why records, but the MVP must not overclaim unsupported outputs as observed or verified evidence.
   Alternatives rejected: synthesizing `supported` claims from weak heuristics; delaying why generation until richer connectors arrive.
+
+- 2026-04-21: keep research sync side effects behind explicit `POST /sync` routes and let `/research` call them server-side before loading the corpus.
+  Rationale: this preserves correct HTTP semantics and avoids pretending a read-only search request is mutation-free while still letting the page render persisted corpus data on first load.
+  Alternatives rejected: mutating storage from `GET /search`; leaving `/research` empty until a separate manual sync step runs.
 
 ## 10. Validation plan
 
@@ -285,6 +308,21 @@ Validation method
   live POST of a claimless normalized trace bundle to `/api/v1/ingest/normalized-trace-bundles`
   `Invoke-WebRequest http://localhost:8080/api/v1/traces/{trace_id}/claim-evidence`
   `Invoke-WebRequest http://localhost:3000/traces/{trace_id}`
+- research ingestion follow-up:
+  `C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/python.exe -m pytest tests/unit/test_research_connector_sync.py tests/integration/test_api_operator_surfaces.py -q`
+  `C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/python.exe -m pytest tests/smoke/test_operator_surfaces_assets.py -q`
+  `C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/ruff.exe check apps/api apps/web/lib apps/web/components apps/web/app/research workers tests packages/schema`
+  `node C:/Repos/active/ai-agent/AI-Flight-Recorder/node_modules/pyright/index.js --pythonpath C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/python.exe -p pyrightconfig.json --level error apps packages workers tests`
+  `npm run lint --workspace @aeris/web`
+  `npm run typecheck --workspace @aeris/web`
+  `docker-compose -f infra/compose/docker-compose.yml down -v --remove-orphans`
+  `docker-compose -f infra/compose/docker-compose.yml config`
+  `docker-compose -f infra/compose/docker-compose.yml up --build -d`
+  `Invoke-WebRequest -Method Post http://localhost:8080/api/v1/research/drive/sync?q=incident%20notes`
+  `Invoke-WebRequest -Method Post http://localhost:8080/api/v1/research/arxiv/sync?q=faithful%20explanations%20provenance`
+  `Invoke-WebRequest http://localhost:8080/api/v1/research/corpus`
+  `Invoke-WebRequest http://localhost:8080/api/v1/research/sync-runs`
+  `Invoke-WebRequest http://localhost:3000/research`
 
 ## 11. Risks / Blockers
 
@@ -316,6 +354,7 @@ Did not ship
 - multi-task per trace orchestration or richer explicit task payloads from the edge
 - dedicated `state_snapshots` query UI outside trace detail
 - observed-evidence auto-linking beyond conservative `self_reported` fallback for claimless traces
+- real credentialed Drive sync, docs export, and arXiv OAI-PMH harvest; Phase 6 persists the fixture/mock contract only
 
 Follow-up
 - if Phase 5 starts, build on the now-verified runnable checkpoint and cognitive-state slice instead of reopening baseline work
