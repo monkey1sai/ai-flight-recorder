@@ -225,6 +225,7 @@ Validation method
 - [x] 2026-04-21 08:23 UTC Milestone 6 completed: shipped claim extraction fallback, claim-centric why panel updates, and compose-backed proof that a claimless live ingest becomes `unsupported` + `self_reported` instead of being upgraded to supported; validation captured in `reports/validation/20260421-claim-centric-why-v1.md`
 - [x] 2026-04-21 09:58 UTC Milestone 7 completed: shipped research ingestion tables, fixture-backed sync receipts with cursor/export provenance, repository-backed corpus query APIs, worker sync helpers, and a persisted corpus explorer on `/research`; validation captured in `reports/validation/20260421-phase6-research-ingestion.md`
 - [x] 2026-04-21 10:36 UTC Milestone 8 completed: shipped replay verification tables, repository-backed verification APIs, replay page verification badge rendering, and validation evidence in `reports/validation/20260421-phase7-verified-explanation.md`
+- [x] 2026-04-21 11:20 UTC Milestone 8 follow-up completed: fixed replay verification overclaim cases so summary badges and replay runs now require actual replay provenance; validation captured in `reports/validation/20260421-phase7-verification-followup.md`
 
 ## 7. Research notes
 
@@ -254,6 +255,7 @@ Validation method
 - Because `/research` is a server component, loading search and corpus in parallel on first render produced an empty corpus race. The page now syncs first, then reads catalog/corpus/status.
 - The seeded demo trace already carried a `grade=verified` explanation plus `replay_trace_id`, so Phase 7 could stay focused on surfacing explicit replay provenance instead of fabricating new verification evidence.
 - Even though replay provenance already existed inside `explanation_records.metadata_json`, a dedicated `verification_records` surface still simplified the operator contract because the Web/API no longer need to reconstruct badges and counts from arbitrary metadata.
+- Follow-up review found that the first Phase 7 slice still overclaimed in edge cases: if a verified explanation lost its `replay_trace_id`, the summary badge still said `replay_verified`, and a trace with zero verified explanations still emitted a synthetic `completed` replay run.
 
 ## 9. Decision log
 
@@ -292,6 +294,10 @@ Validation method
 - 2026-04-21: only explanations already marked `grade=verified` are allowed to become replay verification records.
   Rationale: this preserves the evidence-grade contract and prevents replay routes from upgrading weaker explanation grades into verified proof.
   Alternatives rejected: inferring replay verification from claim status alone; promoting explanations via text heuristics.
+
+- 2026-04-21: replay verification summary badges and replay runs must require concrete replay provenance (`replay_trace_id`), not just the existence of a `verified` explanation row.
+  Rationale: without this guard, the Phase 7 surface overclaims `replay_verified` even when the explanation no longer points to an actual replay trace.
+  Alternatives rejected: continuing to treat all `verified` explanations as replay-backed; fabricating a `completed` replay run for `no_replay_evidence`.
 
 ## 10. Validation plan
 
@@ -362,6 +368,10 @@ Validation method
   `Invoke-WebRequest http://localhost:8080/api/v1/replay/22222222-2222-4222-8222-222222222222/verification`
   `Invoke-WebRequest -Method Post http://localhost:8080/api/v1/replay/22222222-2222-4222-8222-222222222222/verify`
   `(Invoke-WebRequest http://localhost:3000/replay/22222222-2222-4222-8222-222222222222).StatusCode`
+- verified explanation follow-up bugfix:
+  `C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/python.exe -m pytest tests/unit/test_replay_verification.py -q`
+  `C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/ruff.exe check apps/api tests packages/schema`
+  `node C:/Repos/active/ai-agent/AI-Flight-Recorder/node_modules/pyright/index.js --pythonpath C:/Repos/active/ai-agent/AI-Flight-Recorder/.venv/Scripts/python.exe -p pyrightconfig.json --level error apps packages workers tests`
 
 ## 11. Risks / Blockers
 
