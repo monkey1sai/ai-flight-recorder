@@ -190,6 +190,21 @@ export interface ResearchSearchResult {
   items: ResearchDocumentRecord[];
 }
 
+export interface TraceSummary {
+  traceId: string;
+  status: TraceStatus;
+  modelName: string;
+  stepCount: number;
+  claimCount: number;
+  policyFlags: number;
+}
+
+export interface GovernanceSnapshot {
+  auditEvents: AuditEventRecord[];
+  policies: PolicyRuleRecord[];
+  retention: RetentionPolicyRecord[];
+}
+
 export interface TraceBundle {
   session: SessionRecord;
   trace: TraceRecord;
@@ -273,7 +288,7 @@ function getExplanationGrade(stepId: string, observationCount: number, intervent
     .sort((left, right) => gradePriority[right] - gradePriority[left])[0];
 }
 
-export const traceSummaries = [
+export const traceSummaries: TraceSummary[] = [
   {
     traceId: traceBundle.trace.id,
     status: traceBundle.trace.status,
@@ -343,7 +358,7 @@ export const replayFrames: ReplayFrame[] = traceBundle.steps.map((step) => {
 });
 
 export const stateDiffs = traceBundle.state_deltas;
-export const governanceSnapshot = {
+export const governanceSnapshot: GovernanceSnapshot = {
   auditEvents: traceBundle.audit_events,
   policies: traceBundle.policies,
   retention: traceBundle.retention,

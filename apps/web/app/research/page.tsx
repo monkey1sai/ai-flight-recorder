@@ -1,14 +1,15 @@
 import { ResearchSourceList } from "../../components/research-source-list";
-import { researchCatalog } from "../../lib/mock-data";
+import { getResearchCatalog } from "../../lib/api";
 
-export default function ResearchPage() {
+export default async function ResearchPage() {
+  const researchCatalog = await getResearchCatalog();
   return (
     <main className="page-shell stack-page">
       <section className="section-copy">
         <h1>Research Connectors</h1>
         <p>
-          Drive and arXiv are wired in fixture mode first. The page emphasizes provenance fields:
-          source id, source uri, query, retrieved timestamp, and terms note.
+          Drive and arXiv are wired in API-first mode with fixture fallback. The page emphasizes
+          provenance fields: source id, source uri, query, retrieved timestamp, and terms note.
         </p>
       </section>
       <ResearchSourceList

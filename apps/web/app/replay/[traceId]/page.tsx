@@ -1,19 +1,21 @@
 import { notFound } from "next/navigation";
 
 import { ReplayController } from "../../../components/replay-controller";
-import { getTraceBundleById, replayFrames } from "../../../lib/mock-data";
+import { getReplayFrames, getTraceBundle } from "../../../lib/api";
 
-export default function ReplayPage({
+export default async function ReplayPage({
   params,
 }: {
-  params: { traceId: string };
+  params: Promise<{ traceId: string }>;
 }) {
-  const { traceId } = params;
-  const bundle = getTraceBundleById(traceId);
+  const { traceId } = await params;
+  const bundle = await getTraceBundle(traceId);
 
   if (!bundle) {
     notFound();
   }
+
+  const replayFrames = await getReplayFrames(traceId);
 
   return (
     <main className="page-shell stack-page">
