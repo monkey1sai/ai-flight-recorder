@@ -9,7 +9,7 @@ lint:
 	npm run lint --workspace @aeris/web
 
 typecheck:
-	uv run mypy apps packages workers tests
+	node ./node_modules/pyright/index.js -p pyrightconfig.json --level error apps packages workers tests
 	cargo check --manifest-path edge/daemon/Cargo.toml
 	npm run typecheck --workspace @aeris/web
 

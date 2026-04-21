@@ -119,6 +119,7 @@ Validation method
 - [x] 2026-04-20 07:33:00 UTC Milestone 1 completed by adding `tests/conftest.py` so `uv run pytest ...` can resolve `apps` and `packages` imports from repo root
 - [x] 2026-04-20 07:39:00 UTC Milestone 2 completed: `uv sync`, `ruff`, requested unit/smoke tests, npm lint/typecheck, and `cargo check` passed; exact `docker compose` command failed because installed Docker CLI lacks Compose v2 subcommand
 - [x] 2026-04-20 07:42:00 UTC Milestone 3 completed with updated plan and `reports/codex/monorepo-skeleton-validation.md`
+- [x] 2026-04-21 05:38:39 UTC CI merge blocker follow-up completed: replaced the machine-specific Python typecheck path with repo-local `pyright`, added `pyrightconfig.json`, and revalidated Python / Node / Rust gates locally
 
 ## 7. Research notes
 
@@ -132,6 +133,9 @@ Validation method
 - Remote fetch to GitHub currently fails in this environment, so branch freshness against live `origin/master` cannot be revalidated.
 - `uv run python -m pytest ...` passed before code changes, but plain `uv run pytest ...` failed with `ModuleNotFoundError` for `apps` / `packages`; adding a repo-root path bootstrap in `tests/conftest.py` fixed the collection path issue without changing product modules.
 - The machine has Docker CLI and classic `docker-compose`, but does not provide the `docker compose` v2 subcommand required by the requested validation command.
+- The vendored `mypy-1.19.1-py3-none-any.whl` is not upstream mypy; it installs a local `mypy_compat` shim that hardcodes user-specific Node and global `pyright` paths, which breaks GitHub Actions and any machine that does not mirror the author workstation.
+- `pyright` can resolve both `.venv` dependencies and repo-root imports for this monorepo once it is run with a repo-root `pyrightconfig.json` that sets `venvPath`, `venv`, and an execution environment `extraPaths` entry for `"."`.
+- Re-running `npm ci --workspaces --include-workspace-root` in this local shell hit Windows `spawn EPERM`; existing `npm install`, web lint, and web typecheck still pass, so this appears to be a host-process or filesystem-lock condition rather than a repo config regression.
 
 ## 9. Decision log
 
@@ -142,6 +146,10 @@ Validation method
 - 2026-04-20: 以 `tests/conftest.py` 注入 repo root 到 `sys.path`，而不是新增額外 pytest plugin 依賴。
   Rationale: 這是最小且可攜的修補，能同時支援 `uv run pytest` 與 `uv run python -m pytest`。
   Alternatives rejected: 新增 `pytest-pythonpath` 或只要求一律使用 `python -m pytest`；前者增加依賴，後者未真正修好 import layout。
+
+- 2026-04-21: 改用 repo-local `pyright` 和 `pyrightconfig.json` 取代 `uv run mypy ...` 的 machine-specific shim。
+  Rationale: GitHub Actions 失敗的根因是 vendored fake mypy wheel 依賴某台機器上的全域 `pyright`; 改成 versioned Node dependency + repo config 才能讓本地與 CI 都可重現。
+  Alternatives rejected: 繼續硬補全域 `pyright` 安裝；下載真正 mypy wheel 取代 vendor shim；前者仍不可攜，後者會擴大 vendor / lock 變更且對這個 skeleton milestone 沒有額外價值。
 
 ## 10. Validation plan
 
@@ -159,6 +167,7 @@ Validation method
 
 - GitHub remote 無法連線，若要 push / 開 Draft PR 可能同樣受阻
 - 若 Node / Docker / Rust 工具在機器上缺失，需明確標記為 blocked 而不是假裝通過
+- GitHub-hosted workflow 尚未用這個修補重跑一次，因此 merge readiness 仍需一次實際 PR rerun 才能從 local evidence 提升到 remote verified
 
 ## 12. Deliverables
 
@@ -181,3 +190,4 @@ Did not ship
 Follow-up
 - install Docker Compose v2 or adjust the validation environment so `docker compose ...` is available
 - restore network access if the branch must be refreshed from live `origin/master` before push / PR creation
+- rerun the PR checks after pushing the `pyright` fix to verify the `python` job turns green on GitHub-hosted Windows runners
