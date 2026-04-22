@@ -4,6 +4,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from apps.api.app.bootstrap import build_demo_ingest_request
+from apps.api.app.connectors import FixtureArxivConnector
 from apps.api.app.dependencies import (
     get_blob_store,
     get_governance_service,
@@ -13,7 +14,17 @@ from apps.api.app.dependencies import (
     get_trace_workbench_service,
 )
 from apps.api.app.main import app
+from apps.api.app.repositories import FixtureTraceRepository
+from apps.api.app.services import ResearchService
 from apps.api.app.settings import get_settings
+from packages.schema.flight_recorder_schema import (
+    DriveActivityListView,
+    DriveAuthStatusView,
+    DriveChangeSyncReceipt,
+    DriveChangeSyncResult,
+    ResearchConnectorSyncResult,
+    ResearchSearchResponse,
+)
 
 client = TestClient(app)
 
@@ -125,6 +136,62 @@ def test_research_sync_persists_corpus_and_cursor(monkeypatch) -> None:
     assert sync_runs_response.json()[0]["source_type"] == "arxiv"
 
     _clear_dependency_caches()
+
+
+class _BlockedDriveActivityConnector:
+    def auth_status(self) -> DriveAuthStatusView:
+        return DriveAuthStatusView(
+            mode="live",
+            connector_kind="live",
+            authorized=True,
+            client_secrets_configured=True,
+            client_secrets_exists=True,
+            token_present=True,
+        )
+
+    def search(self, query: str) -> ResearchSearchResponse:
+        return ResearchSearchResponse(query=query, items=[])
+
+    def sync(
+        self,
+        query: str,
+        cursor: str | None = None,
+    ) -> ResearchConnectorSyncResult:
+        raise AssertionError("sync should not be called in this test")
+
+    def sync_changes(self, cursor: str | None = None) -> DriveChangeSyncResult:
+        return DriveChangeSyncResult(
+            response=ResearchSearchResponse(query="", items=[]),
+            receipt=DriveChangeSyncReceipt(cursor=cursor),
+        )
+
+    def query_activity(self, source_id: str) -> DriveActivityListView:
+        return DriveActivityListView(
+            source_id=source_id,
+            items=[],
+            blocked_reason="drive_activity_api_disabled",
+            metadata_json={"connector_mode": "live"},
+        )
+
+    def authorize_interactive(self) -> DriveAuthStatusView:
+        return self.auth_status()
+
+
+def test_drive_activity_sync_surfaces_blocked_reason() -> None:
+    app.dependency_overrides[get_research_service] = lambda: ResearchService(
+        repository=FixtureTraceRepository.seeded(),
+        drive_connector=_BlockedDriveActivityConnector(),
+        arxiv_connector=FixtureArxivConnector(),
+    )
+    try:
+        response = client.post("/api/v1/research/drive/activity/sync?source_id=abc123")
+
+        assert response.status_code == 200
+        assert response.json()["source_id"] == "abc123"
+        assert response.json()["blocked_reason"] == "drive_activity_api_disabled"
+        assert response.json()["metadata_json"]["connector_mode"] == "live"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_normalized_ingest_materializes_blob_refs(

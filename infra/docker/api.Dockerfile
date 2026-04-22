@@ -10,6 +10,14 @@ COPY packages ./packages
 COPY workers ./workers
 COPY scripts ./scripts
 
-RUN pip install --no-cache-dir fastapi pydantic uvicorn pg8000 httpx
+RUN pip install --no-cache-dir \
+    fastapi \
+    google-auth \
+    google-auth-oauthlib \
+    httpx \
+    pg8000 \
+    pydantic \
+    requests \
+    uvicorn
 
 CMD ["python", "scripts/run_api.py"]

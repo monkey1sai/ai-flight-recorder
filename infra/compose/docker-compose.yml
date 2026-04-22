@@ -9,6 +9,9 @@ services:
       AERIS_AUTO_BOOTSTRAP: "true"
       AERIS_SEED_DEMO: "true"
       AERIS_REPOSITORY_BACKEND: postgres
+      AERIS_DRIVE_CONNECTOR_MODE: ${AERIS_DRIVE_CONNECTOR_MODE:-auto}
+      AERIS_GOOGLE_CLIENT_SECRETS_PATH: ${AERIS_GOOGLE_CLIENT_SECRETS_PATH:-/workspace-host/credentials.json}
+      AERIS_GOOGLE_TOKEN_PATH: ${AERIS_GOOGLE_TOKEN_PATH:-/var/lib/aeris/google-auth/token.json}
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/aeris
       REDIS_URL: redis://redis:6379/0
       BLOB_ENDPOINT: http://minio:9000
@@ -19,6 +22,8 @@ services:
       - minio
     volumes:
       - api-blob-data:/var/lib/aeris/blobstore
+      - ../../tmp/google-auth:/var/lib/aeris/google-auth
+      - ../../:/workspace-host:ro
 
   web:
     build:
@@ -27,7 +32,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://api:8080
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://api:8080}
     depends_on:
       - api
 

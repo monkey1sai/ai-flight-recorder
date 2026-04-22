@@ -1,14 +1,22 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 
 from apps.api.app.connectors import FixtureDriveConnector, LiveDriveConnector
 from apps.api.app.connectors.drive import (
+    GOOGLE_DOC_MIME_TYPE,
     _drive_activity_from_api,
     build_drive_files_query,
     classify_drive_export_error,
+    classify_google_api_error,
 )
 from apps.api.app.settings import get_settings
+from apps.api.app.storage import LocalBlobStore
+from packages.schema.flight_recorder_schema import (
+    ResearchDocumentRecord,
+    ResearchSourceRecord,
+)
 
 
 def test_settings_parse_drive_oauth_paths(monkeypatch, tmp_path: Path) -> None:
@@ -94,6 +102,72 @@ def test_classify_drive_export_error_maps_too_large() -> None:
     error = httpx.HTTPStatusError("export failed", request=request, response=response)
 
     assert classify_drive_export_error(error) == "export_too_large"
+
+
+def test_classify_google_api_error_maps_service_disabled() -> None:
+    request = httpx.Request("GET", "https://docs.googleapis.com/v1/documents/abc123")
+    response = httpx.Response(
+        403,
+        request=request,
+        text=(
+            '{"error":{"status":"PERMISSION_DENIED","details":[{"reason":"SERVICE_DISABLED"}]}}'
+        ),
+    )
+    error = httpx.HTTPStatusError("docs failed", request=request, response=response)
+
+    assert classify_google_api_error(
+        error,
+        disabled_reason="docs_api_disabled",
+        permission_reason="docs_api_permission_denied",
+        fallback_reason="docs_query_failed",
+    ) == "docs_api_disabled"
+
+
+def test_hydrate_document_continues_when_docs_api_is_blocked(tmp_path: Path) -> None:
+    settings = get_settings().model_copy(
+        update={
+            "drive_connector_mode": "live",
+            "google_client_secrets_path": tmp_path / "credentials.json",
+            "google_token_path": tmp_path / "token.json",
+        }
+    )
+    connector = LiveDriveConnector(settings, LocalBlobStore(tmp_path / "blobstore"))
+    item = ResearchDocumentRecord(
+        id="drive:abc123",
+        title="Incident Notes",
+        summary="Google Doc",
+        authors=["tester"],
+        mime_type=GOOGLE_DOC_MIME_TYPE,
+        tags=["drive", "google-doc"],
+        provenance=ResearchSourceRecord(
+            source_type="drive",
+            source_id="abc123",
+            source_uri="https://drive.google.com/open?id=abc123",
+            retrieved_at=datetime.now(UTC),
+            query="incident notes",
+            metadata_json={"connector_mode": "live"},
+        ),
+    )
+
+    request = httpx.Request("GET", "https://docs.googleapis.com/v1/documents/abc123")
+    response = httpx.Response(
+        403,
+        request=request,
+        text='{"error":{"status":"PERMISSION_DENIED","details":[{"reason":"SERVICE_DISABLED"}]}}',
+    )
+    docs_error = httpx.HTTPStatusError("docs failed", request=request, response=response)
+
+    connector._request_json = lambda *args, **kwargs: (_ for _ in ()).throw(docs_error)  # type: ignore[method-assign]
+    connector._request_bytes = lambda *args, **kwargs: b"exported incident notes"  # type: ignore[method-assign]
+
+    hydrated = connector._hydrate_document(item)
+
+    assert hydrated.content_ref is not None
+    assert hydrated.content_ref.endswith(".txt")
+    assert hydrated.provenance.export_status == "exported"
+    assert hydrated.provenance.metadata_json["docs_json_status"] == "blocked"
+    assert hydrated.provenance.metadata_json["docs_blocked_reason"] == "docs_api_disabled"
+    assert "docs_error" in hydrated.provenance.metadata_json
 
 
 def test_drive_activity_parser_extracts_core_fields() -> None:

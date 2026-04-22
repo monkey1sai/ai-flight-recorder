@@ -7,6 +7,7 @@ def test_operator_surface_assets_exist() -> None:
     required_paths = [
         ROOT / "plans" / "active" / "20260417-platform-slices-3-10.md",
         ROOT / "plans" / "active" / "20260421-mvp-phase-1-7-execution.md",
+        ROOT / "plans" / "active" / "20260422-final-release-closeout.md",
         ROOT / "apps" / "api" / "app" / "routers" / "query.py",
         ROOT / "apps" / "api" / "app" / "settings.py",
         ROOT / "apps" / "api" / "app" / "bootstrap.py",
@@ -44,6 +45,7 @@ def test_operator_surface_assets_exist() -> None:
         ROOT / "reports" / "validation" / "20260421-mvp-live-local-baseline.md",
         ROOT / "reports" / "validation" / "20260421-phase6-research-ingestion.md",
         ROOT / "reports" / "validation" / "20260421-phase7-verified-explanation.md",
+        ROOT / "reports" / "validation" / "20260422-final-release-closeout.md",
     ]
 
     missing = [str(path.relative_to(ROOT)) for path in required_paths if not path.exists()]

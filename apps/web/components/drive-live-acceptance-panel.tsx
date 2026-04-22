@@ -1,5 +1,6 @@
 import type {
   DriveActivityListView,
+  DriveActivitySyncReceipt,
   DriveAuthStatus,
   DriveChangeSyncReceipt,
   ResearchSyncRunRecord,
@@ -9,13 +10,16 @@ export function DriveLiveAcceptancePanel({
   authStatus,
   latestDriveSync,
   changeReceipt,
+  activityReceipt,
   activity,
 }: {
   authStatus: DriveAuthStatus;
   latestDriveSync?: ResearchSyncRunRecord;
   changeReceipt: DriveChangeSyncReceipt;
+  activityReceipt: DriveActivitySyncReceipt;
   activity: DriveActivityListView;
 }) {
+  const activityBlocked = activityReceipt.blocked_reason ?? activity.blocked_reason;
   return (
     <section className="stack-section">
       <div className="section-copy">
@@ -55,17 +59,30 @@ export function DriveLiveAcceptancePanel({
           <p className="muted-line">previous {changeReceipt.previous_cursor ?? "n/a"}</p>
           <p className="muted-line">current {changeReceipt.cursor ?? "n/a"}</p>
           <p className="muted-line">upserted {changeReceipt.upserted_count}</p>
+          <p className="muted-line">blocked {changeReceipt.blocked_reason ?? "none"}</p>
+          {typeof changeReceipt.metadata_json?.ignored_reason === "string" ? (
+            <p className="muted-line">
+              cursor hygiene {changeReceipt.metadata_json.ignored_reason}
+            </p>
+          ) : null}
         </article>
       </div>
       <div className="stack-grid">
         <article className="panel">
           <div className="panel-header">
             <strong>Drive Activity</strong>
-            <span>{activity.items.length} events</span>
+            <span>{activityReceipt.item_count || activity.items.length} events</span>
           </div>
           <p className="muted-line">source {activity.source_id || "n/a"}</p>
+          <p className="muted-line">blocked {activityBlocked ?? "none"}</p>
+          <p className="muted-line">stored {activityReceipt.stored_count}</p>
           <ul className="plain-list">
-            {activity.items.length === 0 ? (
+            {activityBlocked ? (
+              <li>
+                <strong>Blocked</strong>
+                <span>{activityBlocked}</span>
+              </li>
+            ) : activity.items.length === 0 ? (
               <li>
                 <strong>No events</strong>
                 <span>No persisted Drive activity for the selected document.</span>

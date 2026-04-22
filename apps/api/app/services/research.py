@@ -118,43 +118,51 @@ class ResearchService:
 
     def sync_drive_changes(self) -> DriveChangeSyncReceipt:
         self._ensure_drive_ready_for_live_calls()
+        current_cursor, cursor_metadata = self._resolve_drive_changes_cursor()
         result = self.drive_connector.sync_changes(
-            cursor=self._current_cursor("drive", cursor_key="changes_page_token"),
+            cursor=current_cursor,
         )
+        receipt_metadata = {
+            **result.receipt.metadata_json,
+            **result.metadata_json,
+            **cursor_metadata,
+        }
+        receipt = result.receipt.model_copy(update={"metadata_json": receipt_metadata})
         if result.response.items:
             self.repository.upsert_research_documents(
                 source_type="drive",
                 response=result.response,
-                cursor=result.receipt.cursor,
-                metadata_json=result.metadata_json,
+                cursor=receipt.cursor,
+                metadata_json=receipt_metadata,
                 persist_default_cursor=False,
             )
-        if result.receipt.cursor is not None:
+        if receipt.cursor is not None:
             self.repository.upsert_research_cursor(
                 source_type="drive",
                 cursor_key="changes_page_token",
-                cursor_value=result.receipt.cursor,
+                cursor_value=receipt.cursor,
                 metadata_json={
-                    **result.metadata_json,
-                    "previous_cursor": result.receipt.previous_cursor,
-                    "item_count": result.receipt.item_count,
-                    "upserted_count": result.receipt.upserted_count,
-                    "changed_source_ids": result.receipt.changed_source_ids,
+                    **receipt_metadata,
+                    "previous_cursor": receipt.previous_cursor,
+                    "item_count": receipt.item_count,
+                    "upserted_count": receipt.upserted_count,
+                    "changed_source_ids": receipt.changed_source_ids,
                 },
             )
         self.repository.record_audit_event(
             trace_id=None,
             event_type="research.drive_changes_sync",
             actor="worker",
-            outcome="completed",
+            outcome=receipt.blocked_reason or "completed",
             metadata_json={
-                "previous_cursor": result.receipt.previous_cursor,
-                "cursor": result.receipt.cursor,
-                "items": result.receipt.item_count,
-                "upserted": result.receipt.upserted_count,
+                "previous_cursor": receipt.previous_cursor,
+                "cursor": receipt.cursor,
+                "items": receipt.item_count,
+                "upserted": receipt.upserted_count,
+                **receipt.metadata_json,
             },
         )
-        return result.receipt
+        return receipt
 
     def sync_drive_activity(self, source_id: str) -> DriveActivitySyncReceipt:
         self._ensure_drive_ready_for_live_calls()
@@ -164,17 +172,21 @@ class ResearchService:
             trace_id=None,
             event_type="research.drive_activity_sync",
             actor="worker",
-            outcome="completed",
+            outcome=view.blocked_reason or "completed",
             metadata_json={
                 "source_id": source_id,
                 "items": len(view.items),
                 "stored": stored_count,
+                "blocked_reason": view.blocked_reason,
+                **view.metadata_json,
             },
         )
         return DriveActivitySyncReceipt(
             source_id=source_id,
             item_count=len(view.items),
             stored_count=stored_count,
+            blocked_reason=view.blocked_reason,
+            metadata_json=view.metadata_json,
         )
 
     def list_drive_activity(self, source_id: str) -> DriveActivityListView:
@@ -227,6 +239,27 @@ class ResearchService:
             cursor_key=cursor_key,
         )
         return None if current is None else current.cursor_value
+
+    def _resolve_drive_changes_cursor(self) -> tuple[str | None, dict[str, object]]:
+        current = self.repository.get_research_cursor(
+            source_type="drive",
+            cursor_key="changes_page_token",
+        )
+        if current is None:
+            return None, {}
+        status = self.drive_connector.auth_status()
+        if status.connector_kind != "live":
+            return current.cursor_value, {}
+        connector_mode = str(current.metadata_json.get("connector_mode", ""))
+        if current.cursor_value.startswith("drive-fixture:") or connector_mode == "fixture":
+            return (
+                None,
+                {
+                    "ignored_cursor": current.cursor_value,
+                    "ignored_reason": "fixture_cursor_in_live_mode",
+                },
+            )
+        return current.cursor_value, {}
 
     def _ensure_drive_ready_for_live_calls(self) -> None:
         status = self.drive_connector.auth_status()
