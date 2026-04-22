@@ -1,6 +1,9 @@
 import {
   claimFlows as claimFlowsFallback,
   demoTraceBundle,
+  driveActivityList as driveActivityListFallback,
+  driveAuthStatus as driveAuthStatusFallback,
+  driveChangeSyncReceipt as driveChangeSyncReceiptFallback,
   governanceSnapshot as governanceSnapshotFallback,
   planHistory as planHistoryFallback,
   researchCatalog as researchCatalogFallback,
@@ -14,6 +17,9 @@ import {
   traceSummaries as traceSummariesFallback,
   type AuditEventRecord,
   type ClaimFlow,
+  type DriveActivityListView,
+  type DriveAuthStatus,
+  type DriveChangeSyncReceipt,
   type GovernanceSnapshot,
   type PlanVersionRecord,
   type PolicyRuleRecord,
@@ -99,6 +105,9 @@ type ApiResearchCorpusResponse = {
 };
 
 type ApiResearchSyncRun = ResearchSyncRunRecord;
+type ApiDriveAuthStatus = DriveAuthStatus;
+type ApiDriveChangeSyncReceipt = DriveChangeSyncReceipt;
+type ApiDriveActivityListView = DriveActivityListView;
 
 type ApiGovernanceSnapshot = {
   audit_events: AuditEventRecord[];
@@ -233,33 +242,53 @@ export async function getReplayVerification(traceId: string): Promise<ReplayVeri
   return data ?? replayVerificationFallback;
 }
 
+export async function getDriveAuthStatus(): Promise<DriveAuthStatus> {
+  const data = await fetchOrFallback<ApiDriveAuthStatus>(
+    "/api/v1/research/drive/auth-status",
+    null,
+  );
+  return data ?? driveAuthStatusFallback;
+}
+
+export async function getDriveCatalog(
+  authStatus: DriveAuthStatus,
+): Promise<ApiResearchResponse> {
+  const data = await fetchOrFallback<ApiResearchResponse>(
+    "/api/v1/research/drive/search?q=incident notes",
+    null,
+  );
+  if (data) {
+    return data;
+  }
+  if (authStatus.connector_kind === "live") {
+    return { query: "incident notes", items: [] };
+  }
+  return researchCatalogFallback.drive;
+}
+
+export async function getArxivCatalog(): Promise<ApiResearchResponse> {
+  const data = await fetchOrFallback<ApiResearchResponse>(
+    "/api/v1/research/arxiv/search?q=faithful explanations provenance",
+    null,
+  );
+  return data ?? researchCatalogFallback.arxiv;
+}
+
 export async function getResearchCatalog(): Promise<{
   drive: ApiResearchResponse;
   arxiv: ApiResearchResponse;
 }> {
+  const driveAuthStatus = await getDriveAuthStatus();
   const [drive, arxiv] = await Promise.all([
-    fetchOrFallback<ApiResearchResponse>(
-      "/api/v1/research/drive/search?q=incident notes",
-      null,
-    ),
-    fetchOrFallback<ApiResearchResponse>(
-      "/api/v1/research/arxiv/search?q=faithful explanations provenance",
-      null,
-    ),
+    getDriveCatalog(driveAuthStatus),
+    getArxivCatalog(),
   ]);
-  return {
-    drive: drive ?? researchCatalogFallback.drive,
-    arxiv: arxiv ?? researchCatalogFallback.arxiv,
-  };
+  return { drive, arxiv };
 }
 
-export async function syncDefaultResearchSources(): Promise<void> {
+export async function syncDefaultResearchSources(includeDrive = true): Promise<void> {
   try {
-    await Promise.all([
-      fetch(`${API_BASE_URL}/api/v1/research/drive/sync?q=incident notes`, {
-        method: "POST",
-        cache: "no-store",
-      }),
+    const tasks = [
       fetch(
         `${API_BASE_URL}/api/v1/research/arxiv/sync?q=faithful explanations provenance`,
         {
@@ -267,10 +296,69 @@ export async function syncDefaultResearchSources(): Promise<void> {
           cache: "no-store",
         },
       ),
-    ]);
+    ];
+    if (includeDrive) {
+      tasks.push(
+        fetch(`${API_BASE_URL}/api/v1/research/drive/sync?q=incident notes`, {
+          method: "POST",
+          cache: "no-store",
+        }),
+      );
+    }
+    await Promise.all(tasks);
   } catch {
     // Ignore sync failures and let fallback data render the page.
   }
+}
+
+export async function syncDriveChanges(
+  authStatus?: DriveAuthStatus,
+): Promise<DriveChangeSyncReceipt> {
+  const data = await postOrFallback<ApiDriveChangeSyncReceipt>(
+    "/api/v1/research/drive/changes/sync",
+    null,
+  );
+  if (data) {
+    return data;
+  }
+  if (authStatus?.connector_kind === "live") {
+    return {
+      source_type: "drive",
+      previous_cursor: undefined,
+      cursor: undefined,
+      item_count: 0,
+      upserted_count: 0,
+      changed_source_ids: [],
+    };
+  }
+  return driveChangeSyncReceiptFallback;
+}
+
+export async function syncDriveActivity(sourceId: string): Promise<void> {
+  await postOrFallback<unknown>(
+    `/api/v1/research/drive/activity/sync?source_id=${encodeURIComponent(sourceId)}`,
+    null,
+  );
+}
+
+export async function getDriveActivity(
+  sourceId: string,
+  authStatus?: DriveAuthStatus,
+): Promise<DriveActivityListView> {
+  const data = await fetchOrFallback<ApiDriveActivityListView>(
+    `/api/v1/research/drive/activity?source_id=${encodeURIComponent(sourceId)}`,
+    null,
+  );
+  if (data) {
+    return data;
+  }
+  if (authStatus?.connector_kind === "live") {
+    return { source_id: sourceId, items: [] };
+  }
+  if (driveActivityListFallback.source_id === sourceId) {
+    return driveActivityListFallback;
+  }
+  return { source_id: sourceId, items: [] };
 }
 
 export async function getResearchCorpus(
@@ -368,6 +456,21 @@ export async function getPlanHistory(traceId: string): Promise<PlanVersionRecord
 async function fetchOrFallback<T>(path: string, fallback: T | null): Promise<T | null> {
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store" });
+    if (!response.ok) {
+      return fallback;
+    }
+    return (await response.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+async function postOrFallback<T>(path: string, fallback: T | null): Promise<T | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      cache: "no-store",
+    });
     if (!response.ok) {
       return fallback;
     }

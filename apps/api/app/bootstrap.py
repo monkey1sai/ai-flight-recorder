@@ -160,4 +160,10 @@ def _migration_already_materialized(
         return repository.table_exists("research_documents") and repository.table_exists(
             "research_sync_runs"
         )
+    if migration_name == "0005_replay_verification_surfaces.up.sql":
+        return repository.table_exists("replay_runs") and repository.table_exists(
+            "verification_records"
+        )
+    if migration_name == "0006_drive_activity_surfaces.up.sql":
+        return repository.table_exists("research_drive_activity_events")
     return False

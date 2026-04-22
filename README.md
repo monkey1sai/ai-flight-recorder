@@ -12,10 +12,12 @@ This repository now contains a runnable local MVP baseline aligned to
   repository auto-selection between fixture mode and live Postgres mode.
 - `apps/web`
   Next.js App Router pages that prefer live API reads and fall back to fixture data
-  when the API is unavailable.
+  when the API is unavailable. The `/research` page also exposes the Drive connector
+  acceptance surface for auth status, sync receipts, change tracking, and activity data.
 - `packages/schema`
-  Canonical schema models plus the first three Postgres migration slices:
-  core observability entities, governance surfaces, and cognitive-state surfaces.
+  Canonical schema models plus Postgres migration slices for core observability entities,
+  governance surfaces, cognitive-state surfaces, research ingestion, replay verification,
+  and Drive activity persistence.
 - `packages/edge_sdk`
   Minimal Python edge/emitter SDK for the normalized ingest demo path.
 - `scripts/bootstrap_local.py`
@@ -160,13 +162,22 @@ The current migration slices are:
 - `packages/schema/migrations/0001_canonical_schema.up.sql`
 - `packages/schema/migrations/0002_governance_surfaces.up.sql`
 - `packages/schema/migrations/0003_cognitive_state_surfaces.up.sql`
+- `packages/schema/migrations/0004_research_ingestion_surfaces.up.sql`
+- `packages/schema/migrations/0005_replay_verification_surfaces.up.sql`
+- `packages/schema/migrations/0006_drive_activity_surfaces.up.sql`
 
-`0003_cognitive_state_surfaces` adds:
+Selected later slices add:
 
 - `tasks`
 - `plan_versions`
 - `state_snapshots`
 - `traces.task_id` foreign key wiring
+- `research_documents`
+- `research_sync_runs`
+- `research_sync_cursors`
+- `replay_runs`
+- `verification_records`
+- `research_drive_activity_events`
 
 ## Notes
 

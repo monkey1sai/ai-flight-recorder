@@ -5,6 +5,10 @@ from fastapi import APIRouter, Depends, Query
 from apps.api.app.dependencies import get_research_service
 from apps.api.app.services import ResearchService
 from packages.schema.flight_recorder_schema import (
+    DriveActivityListView,
+    DriveActivitySyncReceipt,
+    DriveAuthStatusView,
+    DriveChangeSyncReceipt,
     ResearchCorpusView,
     ResearchSearchResponse,
     ResearchSyncReceipt,
@@ -12,6 +16,13 @@ from packages.schema.flight_recorder_schema import (
 )
 
 router = APIRouter(prefix="/api/v1/research", tags=["research"])
+
+
+@router.get("/drive/auth-status", response_model=DriveAuthStatusView)
+def drive_auth_status(
+    service: ResearchService = Depends(get_research_service),
+) -> DriveAuthStatusView:
+    return service.drive_auth_status()
 
 
 @router.get("/drive/search", response_model=ResearchSearchResponse)
@@ -36,6 +47,29 @@ def sync_drive(
     service: ResearchService = Depends(get_research_service),
 ) -> ResearchSyncReceipt:
     return service.sync_drive(q)
+
+
+@router.post("/drive/changes/sync", response_model=DriveChangeSyncReceipt)
+def sync_drive_changes(
+    service: ResearchService = Depends(get_research_service),
+) -> DriveChangeSyncReceipt:
+    return service.sync_drive_changes()
+
+
+@router.post("/drive/activity/sync", response_model=DriveActivitySyncReceipt)
+def sync_drive_activity(
+    source_id: str = Query(..., description="Drive file id."),
+    service: ResearchService = Depends(get_research_service),
+) -> DriveActivitySyncReceipt:
+    return service.sync_drive_activity(source_id)
+
+
+@router.get("/drive/activity", response_model=DriveActivityListView)
+def list_drive_activity(
+    source_id: str = Query(..., description="Drive file id."),
+    service: ResearchService = Depends(get_research_service),
+) -> DriveActivityListView:
+    return service.list_drive_activity(source_id)
 
 
 @router.post("/arxiv/sync", response_model=ResearchSyncReceipt)

@@ -13,6 +13,8 @@ from packages.schema.flight_recorder_schema import (
     ArtifactRecord,
     AuditEventRecord,
     ClaimEvidenceFlowView,
+    DriveActivityListView,
+    DriveActivityRecord,
     EntityKind,
     ExplanationRecord,
     IngestReceipt,
@@ -72,6 +74,7 @@ class FixtureTraceRepository:
         self._research_documents: dict[str, ResearchDocumentRecord] = {}
         self._research_sync_runs: dict[UUID, ResearchSyncRunRecord] = {}
         self._research_cursors: dict[tuple[str, str], ResearchSyncCursorRecord] = {}
+        self._drive_activity_events: dict[tuple[str, str], DriveActivityRecord] = {}
         self._replay_runs: dict[UUID, ReplayRunRecord] = {}
         self._verification_records: dict[UUID, VerificationRecord] = {}
         self._replace_replay_verification(seed.trace.id, derive_replay_verification(seed))
@@ -275,6 +278,7 @@ class FixtureTraceRepository:
         response: ResearchSearchResponse,
         cursor: str | None = None,
         metadata_json: dict[str, object] | None = None,
+        persist_default_cursor: bool = True,
     ) -> ResearchSyncReceipt:
         sync_run = ResearchSyncRunRecord(
             id=uuid4(),
@@ -304,7 +308,7 @@ class FixtureTraceRepository:
             self._research_documents[item.id] = cloned
             upserted_count += 1
 
-        if cursor is not None:
+        if cursor is not None and persist_default_cursor:
             self._research_cursors[(source_type, "default")] = ResearchSyncCursorRecord(
                 source_type=source_type,
                 cursor_key="default",
@@ -358,6 +362,43 @@ class FixtureTraceRepository:
         cursor_key: str = "default",
     ) -> ResearchSyncCursorRecord | None:
         return self._research_cursors.get((source_type, cursor_key))
+
+    def upsert_research_cursor(
+        self,
+        source_type: str,
+        cursor_key: str,
+        cursor_value: str,
+        metadata_json: dict[str, object] | None = None,
+    ) -> ResearchSyncCursorRecord:
+        record = ResearchSyncCursorRecord(
+            source_type=source_type,
+            cursor_key=cursor_key,
+            cursor_value=cursor_value,
+            updated_at=datetime.now(UTC),
+            metadata_json=metadata_json or {},
+        )
+        self._research_cursors[(source_type, cursor_key)] = record
+        return record
+
+    def upsert_drive_activity_events(
+        self,
+        source_id: str,
+        events: list[DriveActivityRecord],
+    ) -> int:
+        for event in events:
+            self._drive_activity_events[(source_id, event.id)] = event
+        return len(events)
+
+    def list_drive_activity_events(self, source_id: str) -> DriveActivityListView:
+        items = [
+            event
+            for (event_source_id, _event_id), event in self._drive_activity_events.items()
+            if event_source_id == source_id
+        ]
+        return DriveActivityListView(
+            source_id=source_id,
+            items=sorted(items, key=lambda item: item.occurred_at, reverse=True),
+        )
 
     def list_audit_events(self, trace_id: UUID | None = None) -> list[AuditEventRecord]:
         events = list(self._audit_events.values())

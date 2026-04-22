@@ -6,6 +6,8 @@ from uuid import UUID
 from packages.schema.flight_recorder_schema import (
     AuditEventRecord,
     ClaimEvidenceFlowView,
+    DriveActivityListView,
+    DriveActivityRecord,
     IngestReceipt,
     PlanVersionRecord,
     ReplayFrameView,
@@ -56,6 +58,7 @@ class TraceRepository(Protocol):
         response: ResearchSearchResponse,
         cursor: str | None = None,
         metadata_json: dict[str, object] | None = None,
+        persist_default_cursor: bool = True,
     ) -> ResearchSyncReceipt: ...
 
     def list_research_documents(
@@ -74,6 +77,22 @@ class TraceRepository(Protocol):
         source_type: str,
         cursor_key: str = "default",
     ) -> ResearchSyncCursorRecord | None: ...
+
+    def upsert_research_cursor(
+        self,
+        source_type: str,
+        cursor_key: str,
+        cursor_value: str,
+        metadata_json: dict[str, object] | None = None,
+    ) -> ResearchSyncCursorRecord: ...
+
+    def upsert_drive_activity_events(
+        self,
+        source_id: str,
+        events: list[DriveActivityRecord],
+    ) -> int: ...
+
+    def list_drive_activity_events(self, source_id: str) -> DriveActivityListView: ...
 
     def list_audit_events(self, trace_id: UUID | None = None) -> list[AuditEventRecord]: ...
 

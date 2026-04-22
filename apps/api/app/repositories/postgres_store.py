@@ -21,6 +21,8 @@ from packages.schema.flight_recorder_schema import (
     AuditEventRecord,
     ClaimEvidenceFlowView,
     ClaimRecord,
+    DriveActivityListView,
+    DriveActivityRecord,
     EvaluationRecord,
     EvidenceEdgeRecord,
     ExplanationRecord,
@@ -509,6 +511,7 @@ class PostgresTraceRepository:
         response: ResearchSearchResponse,
         cursor: str | None = None,
         metadata_json: dict[str, object] | None = None,
+        persist_default_cursor: bool = True,
     ) -> ResearchSyncReceipt:
         sync_run = ResearchSyncRunRecord(
             id=uuid4(),
@@ -536,7 +539,7 @@ class PostgresTraceRepository:
                     }
                 )
                 self._upsert_research_document(cursor_handle, persisted_item, sync_run.id)
-            if cursor is not None:
+            if cursor is not None and persist_default_cursor:
                 self._upsert_research_cursor(
                     cursor_handle,
                     ResearchSyncCursorRecord(
@@ -624,6 +627,51 @@ class PostgresTraceRepository:
             [source_type, cursor_key],
         )
         return None if row is None else self._model(ResearchSyncCursorRecord, row)
+
+    def upsert_research_cursor(
+        self,
+        source_type: str,
+        cursor_key: str,
+        cursor_value: str,
+        metadata_json: dict[str, object] | None = None,
+    ) -> ResearchSyncCursorRecord:
+        record = ResearchSyncCursorRecord(
+            source_type=source_type,
+            cursor_key=cursor_key,
+            cursor_value=cursor_value,
+            updated_at=datetime.now(UTC),
+            metadata_json=metadata_json or {},
+        )
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            self._upsert_research_cursor(cursor, record)
+        return record
+
+    def upsert_drive_activity_events(
+        self,
+        source_id: str,
+        events: list[DriveActivityRecord],
+    ) -> int:
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            for event in events:
+                self._upsert_drive_activity_event(cursor, event)
+        return len(events)
+
+    def list_drive_activity_events(self, source_id: str) -> DriveActivityListView:
+        rows = self._fetch_all(
+            """
+            select *
+            from research_drive_activity_events
+            where source_id = %s
+            order by occurred_at desc, id asc
+            """,
+            [source_id],
+        )
+        return DriveActivityListView(
+            source_id=source_id,
+            items=[self._model(DriveActivityRecord, row) for row in rows],
+        )
 
     def list_audit_events(self, trace_id: UUID | None = None) -> list[AuditEventRecord]:
         if trace_id is None:
@@ -1453,6 +1501,39 @@ class PostgresTraceRepository:
                 item.provenance.export_status,
                 str(sync_run_id),
                 json.dumps(item.provenance.metadata_json),
+            ],
+        )
+
+    def _upsert_drive_activity_event(
+        self,
+        cursor: Any,
+        event: DriveActivityRecord,
+    ) -> None:
+        cursor.execute(
+            """
+            insert into research_drive_activity_events (
+                id, source_id, occurred_at, primary_action, actors, targets, raw_ref, metadata_json
+            ) values (
+                %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb
+            )
+            on conflict (id) do update set
+                source_id = excluded.source_id,
+                occurred_at = excluded.occurred_at,
+                primary_action = excluded.primary_action,
+                actors = excluded.actors,
+                targets = excluded.targets,
+                raw_ref = excluded.raw_ref,
+                metadata_json = excluded.metadata_json
+            """,
+            [
+                event.id,
+                event.source_id,
+                event.occurred_at,
+                event.primary_action,
+                json.dumps(event.actors),
+                json.dumps(event.targets),
+                event.raw_ref,
+                json.dumps(event.metadata_json),
             ],
         )
 

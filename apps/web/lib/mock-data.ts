@@ -241,6 +241,43 @@ export interface ResearchSyncRunRecord {
   metadata_json?: Record<string, unknown>;
 }
 
+export interface DriveAuthStatus {
+  mode: string;
+  authorized: boolean;
+  connector_kind: string;
+  client_secrets_configured: boolean;
+  client_secrets_exists: boolean;
+  token_present: boolean;
+  can_refresh: boolean;
+  granted_scopes: string[];
+  blocked_reason?: string;
+}
+
+export interface DriveChangeSyncReceipt {
+  source_type: string;
+  previous_cursor?: string;
+  cursor?: string;
+  item_count: number;
+  upserted_count: number;
+  changed_source_ids: string[];
+}
+
+export interface DriveActivityRecord {
+  id: string;
+  source_id: string;
+  occurred_at: string;
+  primary_action: string;
+  actors: string[];
+  targets: string[];
+  raw_ref?: string;
+  metadata_json?: Record<string, unknown>;
+}
+
+export interface DriveActivityListView {
+  source_id: string;
+  items: DriveActivityRecord[];
+}
+
 export interface TraceSummary {
   traceId: string;
   status: string;
@@ -504,6 +541,29 @@ export const researchSyncRuns: ResearchSyncRunRecord[] = [
     metadata_json: { connector_mode: "fixture", harvest_mode: "metadata_only" },
   },
 ];
+export const driveAuthStatus: DriveAuthStatus = {
+  mode: "fixture",
+  authorized: false,
+  connector_kind: "fixture",
+  client_secrets_configured: false,
+  client_secrets_exists: false,
+  token_present: false,
+  can_refresh: false,
+  granted_scopes: [],
+  blocked_reason: "fixture_mode",
+};
+export const driveChangeSyncReceipt: DriveChangeSyncReceipt = {
+  source_type: "drive",
+  previous_cursor: undefined,
+  cursor: "drive-fixture:changes:initial",
+  item_count: 0,
+  upserted_count: 0,
+  changed_source_ids: [],
+};
+export const driveActivityList: DriveActivityListView = {
+  source_id: "incident-notes",
+  items: [],
+};
 export const demoTraceBundle = traceBundle;
 
 export function getTraceBundleById(traceId: string): TraceBundle | undefined {
