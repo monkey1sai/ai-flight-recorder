@@ -11,6 +11,9 @@ class AppSettings(BaseModel):
     database_url: str = Field(default="postgresql://postgres:postgres@localhost:5432/aeris")
     blob_storage_root: Path = Field(default_factory=lambda: Path("tmp/blobstore"))
     api_base_url: str = Field(default="http://127.0.0.1:8080")
+    drive_connector_mode: str = Field(default="auto")
+    google_client_secrets_path: Path | None = None
+    google_token_path: Path = Field(default_factory=lambda: Path("tmp/google-auth/token.json"))
     auto_bootstrap: bool = Field(default=False)
     seed_demo_on_bootstrap: bool = Field(default=True)
     startup_db_timeout_seconds: int = Field(default=30, ge=1)
@@ -27,6 +30,15 @@ def get_settings() -> AppSettings:
         ),
         blob_storage_root=Path(os.getenv("BLOB_STORAGE_ROOT", "tmp/blobstore")),
         api_base_url=os.getenv("AERIS_API_BASE_URL", "http://127.0.0.1:8080"),
+        drive_connector_mode=os.getenv("AERIS_DRIVE_CONNECTOR_MODE", "auto"),
+        google_client_secrets_path=(
+            Path(value)
+            if (value := os.getenv("AERIS_GOOGLE_CLIENT_SECRETS_PATH"))
+            else None
+        ),
+        google_token_path=Path(
+            os.getenv("AERIS_GOOGLE_TOKEN_PATH", "tmp/google-auth/token.json")
+        ),
         auto_bootstrap=os.getenv("AERIS_AUTO_BOOTSTRAP", "false").lower() == "true",
         seed_demo_on_bootstrap=os.getenv("AERIS_SEED_DEMO", "true").lower() == "true",
         startup_db_timeout_seconds=int(os.getenv("AERIS_STARTUP_DB_TIMEOUT_SECONDS", "30")),

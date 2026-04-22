@@ -24,7 +24,7 @@
 - `services/`
 - `connectors/`
 
-目前是 fixture-backed，而不是 live Postgres-backed；目的在於先穩定 route shape、claim/evidence flow、governance metadata 與 replay contract。
+目前 query / replay / governance surfaces 已可走 live Postgres-backed repository；research slice 則保留 fixture baseline，同時新增 opt-in live Google Drive connector，讓本機驗收可在不破壞 fixture fallback 的前提下測試真實 OAuth、Drive search、Docs export、change tracking 與 activity persistence。
 
 ## Web slices
 
@@ -36,7 +36,7 @@
 - `/research`
 - `/admin`
 
-所有頁面都直接使用 shared fixture contract，避免 UI 自己再發明另一套 trace shape。
+所有頁面都優先讀 live API，API 不可用時才 fallback 到 shared fixture contract，避免 UI 自己再發明另一套 trace shape。
 
 ## Edge daemon
 
@@ -53,12 +53,19 @@
 
 ## Research connectors
 
-Drive 與 arXiv 目前是 fixture connector：
+Research connectors 目前分成：
 
 - `apps/api/app/connectors/drive.py`
 - `apps/api/app/connectors/arxiv.py`
 - `workers/drive_sync/job.py`
 - `workers/arxiv_sync/job.py`
+
+其中：
+
+- arXiv 仍是 fixture / metadata-only connector
+- Google Drive 支援 `fixture | auto | live` mode
+- live Drive mode 以 Installed App OAuth 連到真實 Google 帳號
+- live Drive sync 會保留 Docs JSON blob ref、plain-text export ref、changes page token 與 Drive Activity events
 
 保留的 provenance 欄位至少包含：
 
@@ -92,7 +99,7 @@ baseline manifests 位於：
 
 ## Known limitations
 
-- 無 live Postgres persistence
-- 無 live Google Drive / arXiv credentials
+- arXiv 仍無 live connector
+- live Google Drive 驗收仍需要使用者提供外部 OAuth client secrets
 - 無 browser-based Playwright execution
-- Node / Python deps 仍受目前環境阻塞，靜態驗證優先
+- Node / Python 依賴安裝與型別檢查仍可能受本機環境阻塞；需在 validation report 明確區分新問題與既有問題

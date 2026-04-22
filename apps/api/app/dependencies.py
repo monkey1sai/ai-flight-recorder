@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from apps.api.app.connectors import FixtureArxivConnector, FixtureDriveConnector
+from apps.api.app.connectors import (
+    FixtureArxivConnector,
+    FixtureDriveConnector,
+    LiveDriveConnector,
+)
 from apps.api.app.repositories import (
     FixtureTraceRepository,
     PostgresTraceRepository,
@@ -54,8 +58,18 @@ def get_governance_service() -> GovernanceService:
 
 @lru_cache
 def get_research_service() -> ResearchService:
+    settings = get_settings()
+    drive_connector = FixtureDriveConnector()
+    if settings.drive_connector_mode == "live":
+        drive_connector = LiveDriveConnector(settings, get_blob_store())
+    elif (
+        settings.drive_connector_mode == "auto"
+        and settings.google_client_secrets_path is not None
+    ):
+        drive_connector = LiveDriveConnector(settings, get_blob_store())
+
     return ResearchService(
         repository=get_repository(),
-        drive_connector=FixtureDriveConnector(),
+        drive_connector=drive_connector,
         arxiv_connector=FixtureArxivConnector(),
     )

@@ -1,4 +1,9 @@
 from .arxiv import FixtureArxivConnector
-from .drive import FixtureDriveConnector
+from .drive import DriveConnector, FixtureDriveConnector, LiveDriveConnector
 
-__all__ = ["FixtureArxivConnector", "FixtureDriveConnector"]
+__all__ = [
+    "DriveConnector",
+    "FixtureArxivConnector",
+    "FixtureDriveConnector",
+    "LiveDriveConnector",
+]

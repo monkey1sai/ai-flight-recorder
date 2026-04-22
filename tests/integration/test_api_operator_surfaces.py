@@ -75,15 +75,25 @@ def test_replay_verify_endpoint_refreshes_summary() -> None:
 
 
 def test_research_and_admin_surfaces_expose_governance_metadata() -> None:
+    drive_auth_response = client.get("/api/v1/research/drive/auth-status")
     drive_response = client.get("/api/v1/research/drive/search?q=incident notes")
+    drive_changes_response = client.post("/api/v1/research/drive/changes/sync")
+    drive_activity_response = client.get("/api/v1/research/drive/activity?source_id=incident-notes")
     arxiv_response = client.get(
         "/api/v1/research/arxiv/search?q=faithful explanations provenance"
     )
     admin_response = client.get("/api/v1/admin/snapshot")
 
+    assert drive_auth_response.status_code == 200
     assert drive_response.status_code == 200
+    assert drive_changes_response.status_code == 200
+    assert drive_activity_response.status_code == 200
     assert arxiv_response.status_code == 200
     assert admin_response.status_code == 200
+    assert drive_auth_response.json()["mode"] == "fixture"
+    assert drive_auth_response.json()["blocked_reason"] == "fixture_mode"
+    assert drive_changes_response.json()["cursor"].startswith("drive-fixture:changes:")
+    assert drive_activity_response.json()["source_id"] == "incident-notes"
     assert drive_response.json()["items"][0]["provenance"]["source_type"] == "drive"
     assert arxiv_response.json()["items"][0]["provenance"]["source_type"] == "arxiv"
     assert len(admin_response.json()["policies"]) >= 1

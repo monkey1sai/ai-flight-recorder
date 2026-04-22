@@ -245,6 +245,55 @@ class ResearchConnectorSyncResult(BaseModel):
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
+class DriveAuthStatusView(BaseModel):
+    mode: str
+    authorized: bool
+    connector_kind: str
+    client_secrets_configured: bool
+    client_secrets_exists: bool
+    token_present: bool
+    can_refresh: bool = False
+    granted_scopes: list[str] = Field(default_factory=list)
+    blocked_reason: str | None = None
+
+
+class DriveChangeSyncReceipt(BaseModel):
+    source_type: str = "drive"
+    previous_cursor: str | None = None
+    cursor: str | None = None
+    item_count: int = 0
+    upserted_count: int = 0
+    changed_source_ids: list[str] = Field(default_factory=list)
+
+
+class DriveChangeSyncResult(BaseModel):
+    response: ResearchSearchResponse
+    receipt: DriveChangeSyncReceipt
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class DriveActivityRecord(BaseModel):
+    id: str
+    source_id: str
+    occurred_at: datetime
+    primary_action: str
+    actors: list[str] = Field(default_factory=list)
+    targets: list[str] = Field(default_factory=list)
+    raw_ref: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class DriveActivityListView(BaseModel):
+    source_id: str
+    items: list[DriveActivityRecord] = Field(default_factory=list)
+
+
+class DriveActivitySyncReceipt(BaseModel):
+    source_id: str
+    item_count: int = 0
+    stored_count: int = 0
+
+
 class ResearchSyncRunRecord(BaseModel):
     id: UUID
     source_type: str
