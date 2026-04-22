@@ -18,6 +18,7 @@ import {
   type AuditEventRecord,
   type ClaimFlow,
   type DriveActivityListView,
+  type DriveActivitySyncReceipt,
   type DriveAuthStatus,
   type DriveChangeSyncReceipt,
   type GovernanceSnapshot,
@@ -108,6 +109,7 @@ type ApiResearchSyncRun = ResearchSyncRunRecord;
 type ApiDriveAuthStatus = DriveAuthStatus;
 type ApiDriveChangeSyncReceipt = DriveChangeSyncReceipt;
 type ApiDriveActivityListView = DriveActivityListView;
+type ApiDriveActivitySyncReceipt = DriveActivitySyncReceipt;
 
 type ApiGovernanceSnapshot = {
   audit_events: AuditEventRecord[];
@@ -329,16 +331,28 @@ export async function syncDriveChanges(
       item_count: 0,
       upserted_count: 0,
       changed_source_ids: [],
+      blocked_reason: "upstream_unavailable",
+      metadata_json: { connector_mode: "live" },
     };
   }
   return driveChangeSyncReceiptFallback;
 }
 
-export async function syncDriveActivity(sourceId: string): Promise<void> {
-  await postOrFallback<unknown>(
+export async function syncDriveActivity(sourceId: string): Promise<DriveActivitySyncReceipt> {
+  const data = await postOrFallback<ApiDriveActivitySyncReceipt>(
     `/api/v1/research/drive/activity/sync?source_id=${encodeURIComponent(sourceId)}`,
     null,
   );
+  if (data) {
+    return data;
+  }
+  return {
+    source_id: sourceId,
+    item_count: 0,
+    stored_count: 0,
+    blocked_reason: "upstream_unavailable",
+    metadata_json: { connector_mode: "live" },
+  };
 }
 
 export async function getDriveActivity(
@@ -353,7 +367,12 @@ export async function getDriveActivity(
     return data;
   }
   if (authStatus?.connector_kind === "live") {
-    return { source_id: sourceId, items: [] };
+    return {
+      source_id: sourceId,
+      items: [],
+      blocked_reason: "upstream_unavailable",
+      metadata_json: { connector_mode: "live" },
+    };
   }
   if (driveActivityListFallback.source_id === sourceId) {
     return driveActivityListFallback;

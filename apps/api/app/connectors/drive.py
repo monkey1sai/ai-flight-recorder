@@ -143,12 +143,17 @@ class FixtureDriveConnector:
             receipt=DriveChangeSyncReceipt(
                 previous_cursor=cursor,
                 cursor=next_cursor,
+                metadata_json={"connector_mode": "fixture"},
             ),
             metadata_json={"connector_mode": "fixture"},
         )
 
     def query_activity(self, source_id: str) -> DriveActivityListView:
-        return DriveActivityListView(source_id=source_id, items=[])
+        return DriveActivityListView(
+            source_id=source_id,
+            items=[],
+            metadata_json={"connector_mode": "fixture"},
+        )
 
     def authorize_interactive(self) -> DriveAuthStatusView:
         return self.auth_status()
@@ -323,6 +328,7 @@ class LiveDriveConnector:
                     item_count=0,
                     upserted_count=0,
                     changed_source_ids=[],
+                    metadata_json={"connector_mode": "live", "sync_kind": "changes"},
                 ),
                 metadata_json={"connector_mode": "live", "sync_kind": "changes"},
             )
@@ -350,6 +356,7 @@ class LiveDriveConnector:
                 item_count=len(payload.get("changes", [])),
                 upserted_count=len(changed_items),
                 changed_source_ids=[item.provenance.source_id for item in changed_items],
+                metadata_json={"connector_mode": "live", "sync_kind": "changes"},
             ),
             metadata_json={"connector_mode": "live", "sync_kind": "changes"},
         )
@@ -357,11 +364,28 @@ class LiveDriveConnector:
     def query_activity(self, source_id: str) -> DriveActivityListView:
         if self.blob_store is None:
             raise RuntimeError("blob_store is required for drive activity queries")
-        payload = self._request_json(
-            "POST",
-            "https://driveactivity.googleapis.com/v2/activity:query",
-            json_body={"itemName": f"items/{source_id}", "pageSize": 25},
-        )
+        try:
+            payload = self._request_json(
+                "POST",
+                "https://driveactivity.googleapis.com/v2/activity:query",
+                json_body={"itemName": f"items/{source_id}", "pageSize": 25},
+            )
+        except httpx.HTTPStatusError as error:
+            blocked_reason = classify_google_api_error(
+                error,
+                disabled_reason="drive_activity_api_disabled",
+                permission_reason="drive_activity_permission_denied",
+                fallback_reason="drive_activity_query_failed",
+            )
+            return DriveActivityListView(
+                source_id=source_id,
+                items=[],
+                blocked_reason=blocked_reason,
+                metadata_json={
+                    "connector_mode": "live",
+                    "error": _summarize_http_error(error),
+                },
+            )
         events = []
         for activity in payload.get("activities", []):
             raw_blob = self.blob_store.put_json(
@@ -370,7 +394,11 @@ class LiveDriveConnector:
                 activity,
             )
             events.append(_drive_activity_from_api(source_id, activity, raw_blob.storage_ref))
-        return DriveActivityListView(source_id=source_id, items=events)
+        return DriveActivityListView(
+            source_id=source_id,
+            items=events,
+            metadata_json={"connector_mode": "live"},
+        )
 
     def _status(
         self,
@@ -503,21 +531,35 @@ class LiveDriveConnector:
                 }
             )
 
-        docs_json = self._request_json(
-            "GET",
-            f"{DOCS_API_BASE}/documents/{item.provenance.source_id}",
-        )
-        docs_json_blob = self.blob_store.put_json(
-            "research/drive/docs-json",
-            item.provenance.source_id,
-            docs_json,
-        )
         metadata_json = dict(item.provenance.metadata_json)
-        metadata_json["docs_json_ref"] = docs_json_blob.storage_ref
-
-        export_status = "exported"
-        content_ref = docs_json_blob.storage_ref
-        checksum = docs_json_blob.checksum
+        docs_json_ref: str | None = None
+        content_ref = item.content_ref
+        checksum = item.provenance.checksum
+        export_status = "export_unavailable"
+        try:
+            docs_json = self._request_json(
+                "GET",
+                f"{DOCS_API_BASE}/documents/{item.provenance.source_id}",
+            )
+            docs_json_blob = self.blob_store.put_json(
+                "research/drive/docs-json",
+                item.provenance.source_id,
+                docs_json,
+            )
+            docs_json_ref = docs_json_blob.storage_ref
+            metadata_json["docs_json_ref"] = docs_json_ref
+            metadata_json["docs_json_status"] = "retrieved"
+            content_ref = docs_json_blob.storage_ref
+            checksum = docs_json_blob.checksum
+        except httpx.HTTPStatusError as error:
+            metadata_json["docs_json_status"] = "blocked"
+            metadata_json["docs_error"] = _summarize_http_error(error)
+            metadata_json["docs_blocked_reason"] = classify_google_api_error(
+                error,
+                disabled_reason="docs_api_disabled",
+                permission_reason="docs_api_permission_denied",
+                fallback_reason="docs_query_failed",
+            )
         try:
             export_bytes = self._request_bytes(
                 "GET",
@@ -533,9 +575,12 @@ class LiveDriveConnector:
             )
             content_ref = export_blob.storage_ref
             checksum = export_blob.checksum
+            export_status = "exported"
         except httpx.HTTPStatusError as error:
             export_status = classify_drive_export_error(error)
             metadata_json["export_error"] = _summarize_http_error(error)
+            if docs_json_ref is not None:
+                content_ref = docs_json_ref
 
         return item.model_copy(
             update={
@@ -572,6 +617,21 @@ def classify_drive_export_error(error: httpx.HTTPStatusError) -> str:
     return "export_failed"
 
 
+def classify_google_api_error(
+    error: httpx.HTTPStatusError,
+    *,
+    disabled_reason: str,
+    permission_reason: str,
+    fallback_reason: str,
+) -> str:
+    payload = error.response.text.lower()
+    if "service_disabled" in payload or "accessnotconfigured" in payload:
+        return disabled_reason
+    if error.response.status_code in {401, 403}:
+        return permission_reason
+    return fallback_reason
+
+
 def _parse_google_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -583,10 +643,17 @@ def _normalize_drive_checksum(value: str | None) -> str | None:
 
 
 def _summarize_http_error(error: httpx.HTTPStatusError) -> dict[str, Any]:
-    return {
+    summary = {
         "status_code": error.response.status_code,
         "url": str(error.request.url),
     }
+    try:
+        payload = error.response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        summary["response_json"] = payload
+    return summary
 
 
 def _drive_activity_from_api(

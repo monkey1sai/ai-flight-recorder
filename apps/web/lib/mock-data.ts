@@ -260,6 +260,8 @@ export interface DriveChangeSyncReceipt {
   item_count: number;
   upserted_count: number;
   changed_source_ids: string[];
+  blocked_reason?: string;
+  metadata_json?: Record<string, unknown>;
 }
 
 export interface DriveActivityRecord {
@@ -276,6 +278,16 @@ export interface DriveActivityRecord {
 export interface DriveActivityListView {
   source_id: string;
   items: DriveActivityRecord[];
+  blocked_reason?: string;
+  metadata_json?: Record<string, unknown>;
+}
+
+export interface DriveActivitySyncReceipt {
+  source_id: string;
+  item_count: number;
+  stored_count: number;
+  blocked_reason?: string;
+  metadata_json?: Record<string, unknown>;
 }
 
 export interface TraceSummary {

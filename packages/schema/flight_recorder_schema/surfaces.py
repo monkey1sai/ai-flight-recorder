@@ -264,6 +264,8 @@ class DriveChangeSyncReceipt(BaseModel):
     item_count: int = 0
     upserted_count: int = 0
     changed_source_ids: list[str] = Field(default_factory=list)
+    blocked_reason: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class DriveChangeSyncResult(BaseModel):
@@ -286,12 +288,16 @@ class DriveActivityRecord(BaseModel):
 class DriveActivityListView(BaseModel):
     source_id: str
     items: list[DriveActivityRecord] = Field(default_factory=list)
+    blocked_reason: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class DriveActivitySyncReceipt(BaseModel):
     source_id: str
     item_count: int = 0
     stored_count: int = 0
+    blocked_reason: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class ResearchSyncRunRecord(BaseModel):

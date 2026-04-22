@@ -46,12 +46,18 @@ This repo already has research persistence and API/UI surfaces. The missing work
 
 - This phase can stay bounded by implementing pull-based change tracking only.
 - `files.export` failures caused by size or format must not fail the whole sync.
+- If Google Docs API is disabled, the connector should still attempt `files.export` and surface the Docs failure as explicit provenance metadata instead of a generic 500.
+- If Drive Activity API is disabled, the API surface should return an explicit blocked reason rather than an empty-success ambiguity or server error.
 - Docs JSON and export bytes should go to blob storage; tables should only store refs and metadata.
 - Drive Activity persistence should be a dedicated table rather than being hidden in sync-run metadata.
 - The live connector must expose auth status separately so `/research` can distinguish:
   - live + authorized
   - live + blocked
   - auto + fixture fallback
+- Local Docker acceptance should have a stable contract for:
+  - runtime Google auth dependencies
+  - token persistence under `tmp/google-auth/`
+  - compose env wiring for live mode
 
 ## Open questions
 

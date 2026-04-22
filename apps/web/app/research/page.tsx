@@ -30,14 +30,22 @@ export default async function ResearchPage() {
     item_count: 0,
     upserted_count: 0,
     changed_source_ids: [],
+    blocked_reason: driveAuthStatus.blocked_reason ?? "drive_not_authorized",
+    metadata_json: { connector_mode: driveAuthStatus.connector_kind },
   };
   const selectedDriveItem = researchCorpus.items.find((item) => item.provenance.source_type === "drive");
-  if (includeDrive && selectedDriveItem) {
-    await syncDriveActivity(selectedDriveItem.provenance.source_id);
-  }
+  const driveActivityReceipt = includeDrive && selectedDriveItem
+    ? await syncDriveActivity(selectedDriveItem.provenance.source_id)
+    : {
+        source_id: selectedDriveItem?.provenance.source_id ?? "",
+        item_count: 0,
+        stored_count: 0,
+        blocked_reason: includeDrive ? undefined : (driveAuthStatus.blocked_reason ?? "drive_not_authorized"),
+        metadata_json: { connector_mode: driveAuthStatus.connector_kind },
+      };
   const driveActivity = selectedDriveItem
     ? await getDriveActivity(selectedDriveItem.provenance.source_id, driveAuthStatus)
-    : { source_id: "", items: [] };
+    : { source_id: "", items: [], metadata_json: { connector_mode: driveAuthStatus.connector_kind } };
   const latestDriveSync = syncRuns.find((item) => item.source_type === "drive");
   return (
     <main className="page-shell stack-page">
@@ -52,6 +60,7 @@ export default async function ResearchPage() {
         authStatus={driveAuthStatus}
         latestDriveSync={latestDriveSync}
         changeReceipt={driveChangeReceipt}
+        activityReceipt={driveActivityReceipt}
         activity={driveActivity}
       />
       <ResearchSourceList
